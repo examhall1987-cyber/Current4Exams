@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Current4Exams</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { background: #F0F1F3; }
+    .admin-wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 60px; }
+    .admin-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .admin-title { font-size: 18px; font-weight: 500; }
+    .admin-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .tab-bar { display: flex; gap: 4px; margin-bottom: 20px; }
+    .tab-btn {
+      font-size: 12.5px; padding: 6px 16px; border-radius: var(--radius-sm);
+      border: 0.5px solid var(--border); background: var(--surface);
+      color: var(--text-secondary); cursor: pointer; font-family: var(--font);
+      transition: all 0.12s;
+    }
+    .tab-btn.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+
+    .form-card {
+      background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: var(--radius-lg); padding: 24px 28px; margin-bottom: 20px;
+    }
+    .form-card h2 { font-size: 14px; font-weight: 500; margin-bottom: 18px; padding-bottom: 10px; border-bottom: 0.5px solid var(--border); }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .form-row.full { grid-template-columns: 1fr; }
+    .form-row.tri { grid-template-columns: 1fr 1fr 1fr; }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); }
+    .field input, .field select, .field textarea {
+      padding: 8px 11px; border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font);
+      color: var(--text-primary); background: var(--surface); outline: none;
+      transition: border-color 0.12s;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--brand-mid); }
+    .field textarea { resize: vertical; min-height: 80px; }
+    .field textarea.body-input { min-height: 200px; }
+
+    .key-facts-section { margin-bottom: 14px; }
+    .key-facts-section label { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); display: block; margin-bottom: 6px; }
+    .fact-row { display: grid; grid-template-columns: 1fr 1fr 32px; gap: 8px; margin-bottom: 7px; align-items: center; }
+    .fact-row input { padding: 7px 10px; border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-size: 12.5px; font-family: var(--font); outline: none; }
+    .fact-row input:focus { border-color: var(--brand-mid); }
+    .remove-fact {
+      width: 28px; height: 28px; border-radius: 6px; border: 0.5px solid #FCEBEB;
+      background: #FCEBEB; color: #A32D2D; cursor: pointer; font-size: 16px;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .add-fact-btn {
+      font-size: 12px; color: var(--brand); cursor: pointer; background: none; border: none;
+      font-family: var(--font); padding: 4px 0;
+    }
+
+    .action-row { display: flex; align-items: center; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 0.5px solid var(--border); }
+    .btn-publish {
+      padding: 9px 24px; background: var(--brand); color: #fff; border: none;
+      border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
+      font-family: var(--font); cursor: pointer; transition: background 0.12s;
+    }
+    .btn-publish:hover { background: var(--brand-dark); }
+    .btn-publish:disabled { background: var(--text-muted); cursor: not-allowed; }
+    .btn-clear {
+      padding: 9px 18px; background: none; border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font);
+      color: var(--text-secondary); cursor: pointer; transition: all 0.12s;
+    }
+    .btn-clear:hover { border-color: var(--border-hover); color: var(--text-primary); }
+    .status-msg { font-size: 12.5px; padding: 7px 13px; border-radius: var(--radius-sm); }
+    .status-msg.success { background: var(--brand-light); color: var(--brand-dark); }
+    .status-msg.error { background: #FCEBEB; color: #A32D2D; }
+
+    /* Articles list table */
+    .articles-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .articles-table th {
+      text-align: left; padding: 9px 12px; background: #F7F8FA;
+      border-bottom: 0.5px solid var(--border); color: var(--text-muted);
+      font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .articles-table td { padding: 10px 12px; border-bottom: 0.5px solid var(--border); vertical-align: top; }
+    .articles-table tr:last-child td { border-bottom: none; }
+    .articles-table tr:hover td { background: #F9FAFB; }
+    .tbl-title { font-weight: 500; color: var(--text-primary); margin-bottom: 3px; }
+    .tbl-meta { color: var(--text-muted); font-size: 11px; }
+    .tbl-del {
+      padding: 3px 9px; border-radius: 4px; border: 0.5px solid #FCEBEB;
+      background: #FCEBEB; color: #A32D2D; cursor: pointer; font-size: 11px;
+      font-family: var(--font);
+    }
+
+    /* Login overlay */
+    .login-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center; z-index: 999;
+    }
+    .login-box {
+      background: var(--surface); border-radius: var(--radius-lg);
+      padding: 32px 36px; width: 340px; text-align: center;
+    }
+    .login-box h2 { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+    .login-box p { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
+    .login-box input {
+      width: 100%; padding: 9px 12px; border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font);
+      outline: none; margin-bottom: 12px;
+    }
+    .login-box input:focus { border-color: var(--brand-mid); }
+    .login-box button {
+      width: 100%; padding: 10px; background: var(--brand); color: #fff;
+      border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
+      font-family: var(--font); cursor: pointer;
+    }
+    .login-err { font-size: 12px; color: #A32D2D; margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<!-- Login overlay -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="logo" style="justify-content:center;margin-bottom:16px">
+      <div class="logo-icon"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:#0F6E56;fill:none;stroke-width:2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+      Current4Exams
+    </div>
+    <h2>Admin login</h2>
+    <p>Enter the admin password to continue</p>
+    <input type="password" id="pwInput" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">Login</button>
+    <div class="login-err hidden" id="loginErr">Incorrect password</div>
+  </div>
+</div>
+
+<!-- Topbar -->
+<header class="topbar">
+  <a href="index.html" class="logo">
+    <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+    Current4Exams
+  </a>
+  <nav class="nav-links">
+    <a href="index.html">← Public site</a>
+    <a href="admin.html" class="active">Articles</a>
+    <a href="admin-vacancies.html">Vacancies</a>
+  </nav>
+  <div style="font-size:12px;color:var(--text-muted)">Admin panel</div>
+</header>
+
+<div class="admin-wrap">
+  <div class="admin-header">
+    <div>
+      <div class="admin-title">Article manager</div>
+      <div class="admin-subtitle">Publish and manage current affairs articles</div>
+    </div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="showTab('publish')">Publish new article</button>
+    <button class="tab-btn" onclick="showTab('list')">All articles</button>
+  </div>
+
+  <!-- PUBLISH FORM -->
+  <div id="tabPublish">
+    <div class="form-card">
+      <h2>Article details</h2>
+
+      <div class="form-row full">
+        <div class="field">
+          <label>Title *</label>
+          <input type="text" id="fTitle" placeholder="e.g. Cabinet approves Waqf Amendment Act 2025 — key provisions">
+        </div>
+      </div>
+      <div class="form-row full">
+        <div class="field">
+          <label>Summary (shown on card) *</label>
+          <textarea id="fSummary" placeholder="2–3 line summary shown on the article card. Keep it factual and exam-oriented."></textarea>
+        </div>
+      </div>
+      <div class="form-row full">
+        <div class="field">
+          <label>Full body (HTML supported)</label>
+          <textarea class="body-input" id="fBody" placeholder="Full article body. You can use &lt;p&gt;, &lt;h3&gt;, &lt;ul&gt;, &lt;li&gt;, &lt;strong&gt; tags."></textarea>
+        </div>
+      </div>
+
+      <div class="form-row tri">
+        <div class="field">
+          <label>Category *</label>
+          <select id="fCategory">
+            <option value="current-affairs">Current Affairs</option>
+            <option value="government-schemes">Government Schemes</option>
+            <option value="economy-banking">Economy & Banking</option>
+            <option value="defence">Defence</option>
+            <option value="reports-indices">Reports and Indices</option>
+            <option value="environment">Environment & Biodiversity</option>
+            <option value="awards-honours">Awards, Honours & Persons</option>
+            <option value="places-in-news">Places in News</option>
+            <option value="important-days">Important Days and Events</option>
+            <option value="sports">Sports Current Affairs</option>
+            <option value="science-technology">Science & Technology</option>
+            <option value="summits-conferences">Summits and Conferences</option>
+            <option value="international">International</option>
+            <option value="art-culture">Art & Culture</option>
+            <option value="up-schemes">UP Govt. Schemes</option>
+            <option value="up-infrastructure">UP Infrastructure</option>
+            <option value="bihar-schemes">Bihar Govt. Schemes</option>
+            <option value="bihar-infrastructure">Bihar Infrastructure</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Relevant for</label>
+          <select id="fStates" multiple style="height:72px">
+            <option value="all" selected>All (UPPCS + BPSC)</option>
+            <option value="uppcs">UPPCS only</option>
+            <option value="bpsc">BPSC only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Source</label>
+          <input type="text" id="fSource" placeholder="e.g. PIB, The Hindu, UP Govt">
+        </div>
+      </div>
+
+      <div class="form-row tri">
+        <div class="field">
+          <label>Importance</label>
+          <select id="fImportance">
+            <option value="high">High</option>
+            <option value="medium" selected>Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Relevance</label>
+          <select id="fRelevance">
+            <option value="Prelims + Mains">Prelims + Mains</option>
+            <option value="Prelims only">Prelims only</option>
+            <option value="Mains only">Mains only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Publish date & time</label>
+          <input type="datetime-local" id="fDate">
+        </div>
+      </div>
+
+      <div class="form-row full">
+        <div class="field">
+          <label>Exam relevance note (shown at bottom of article)</label>
+          <textarea id="fExamNote" placeholder="e.g. This topic is important for UPPCS Mains GS-2 under Governance. Key angle: role of state in minority welfare."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <h2>Key facts (optional)</h2>
+      <div class="key-facts-section">
+        <div id="factRows"></div>
+        <button class="add-fact-btn" onclick="addFact()">+ Add key fact row</button>
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn-publish" id="btnPublish" onclick="publishArticle()">Publish article</button>
+      <button class="btn-clear" onclick="clearForm()">Clear form</button>
+      <span id="statusMsg" class="status-msg hidden"></span>
+    </div>
+  </div>
+
+  <!-- ARTICLES LIST -->
+  <div id="tabList" class="hidden">
+    <div class="form-card">
+      <h2>Published articles <span id="articleCount" style="font-weight:400;color:var(--text-muted)"></span></h2>
+      <div id="articleTableWrap">
+        <div class="empty-state"><div class="spinner"></div>Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { firebaseConfig, ADMIN_PASSWORD } from './js/firebase-config.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import {
+  getFirestore, collection, addDoc, getDocs,
+  deleteDoc, doc, orderBy, query, Timestamp
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+// ── Login ──
+window.doLogin = function() {
+  const pw = document.getElementById('pwInput').value;
+  if (pw === ADMIN_PASSWORD) {
+    document.getElementById('loginOverlay').style.display = 'none';
+    sessionStorage.setItem('pcs_admin', '1');
+  } else {
+    document.getElementById('loginErr').classList.remove('hidden');
+  }
+};
+if (sessionStorage.getItem('pcs_admin') === '1')
+  document.getElementById('loginOverlay').style.display = 'none';
+
+// ── Tabs ──
+window.showTab = function(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='publish')||(i===1&&tab==='list')));
+  document.getElementById('tabPublish').classList.toggle('hidden', tab !== 'publish');
+  document.getElementById('tabList').classList.toggle('hidden', tab !== 'list');
+  if (tab === 'list') loadArticleList();
+};
+
+// ── Set default datetime ──
+const now = new Date();
+now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+document.getElementById('fDate').value = now.toISOString().slice(0,16);
+
+// ── Key facts ──
+window.addFact = function() {
+  const row = document.createElement('div');
+  row.className = 'fact-row';
+  row.innerHTML = `
+    <input type="text" placeholder="Key (e.g. Nodal Ministry)">
+    <input type="text" placeholder="Value (e.g. Ministry of Minority Affairs)">
+    <button class="remove-fact" onclick="this.parentElement.remove()">×</button>`;
+  document.getElementById('factRows').appendChild(row);
+};
+
+// ── Publish ──
+window.publishArticle = async function() {
+  const title   = document.getElementById('fTitle').value.trim();
+  const summary = document.getElementById('fSummary').value.trim();
+  if (!title || !summary) { showStatus('Title and summary are required.', 'error'); return; }
+
+  const statesSel = [...document.getElementById('fStates').selectedOptions].map(o => o.value);
+  const keyFacts  = [...document.getElementById('factRows').querySelectorAll('.fact-row')].map(r => {
+    const inputs = r.querySelectorAll('input');
+    return { key: inputs[0].value.trim(), value: inputs[1].value.trim() };
+  }).filter(f => f.key && f.value);
+
+  const dateVal = document.getElementById('fDate').value;
+  const publishedAt = dateVal ? Timestamp.fromDate(new Date(dateVal)) : Timestamp.now();
+
+  const btn = document.getElementById('btnPublish');
+  btn.disabled = true; btn.textContent = 'Publishing...';
+
+  try {
+    await addDoc(collection(db, 'articles'), {
+      title,
+      summary,
+      body:       document.getElementById('fBody').value.trim(),
+      category:   document.getElementById('fCategory').value,
+      states:     statesSel,
+      source:     document.getElementById('fSource').value.trim(),
+      importance: document.getElementById('fImportance').value,
+      relevance:  document.getElementById('fRelevance').value,
+      examNote:   document.getElementById('fExamNote').value.trim(),
+      keyFacts,
+      publishedAt,
+      createdAt:  Timestamp.now()
+    });
+    showStatus('Article published successfully!', 'success');
+    clearForm();
+  } catch(e) {
+    showStatus('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Publish article';
+  }
+};
+
+function showStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.className = 'status-msg ' + type;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+window.clearForm = function() {
+  ['fTitle','fSummary','fBody','fSource','fExamNote'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fCategory').value   = 'current-affairs';
+  document.getElementById('fImportance').value = 'medium';
+  document.getElementById('fRelevance').value  = 'Prelims + Mains';
+  document.getElementById('factRows').innerHTML = '';
+  const n = new Date(); n.setMinutes(n.getMinutes()-n.getTimezoneOffset());
+  document.getElementById('fDate').value = n.toISOString().slice(0,16);
+};
+
+// ── Article list ──
+async function loadArticleList() {
+  const wrap = document.getElementById('articleTableWrap');
+  wrap.innerHTML = `<div class="empty-state"><div class="spinner"></div>Loading...</div>`;
+  try {
+    const snap = await getDocs(query(collection(db,'articles'), orderBy('publishedAt','desc')));
+    const arts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    document.getElementById('articleCount').textContent = `(${arts.length})`;
+    if (!arts.length) { wrap.innerHTML = `<div class="empty-state">No articles published yet.</div>`; return; }
+    wrap.innerHTML = `<table class="articles-table">
+      <thead><tr><th>Title</th><th>Category</th><th>Date</th><th>Imp.</th><th></th></tr></thead>
+      <tbody>${arts.map(a => {
+        const d = a.publishedAt?.toDate ? a.publishedAt.toDate().toLocaleDateString('en-IN') : '—';
+        return `<tr>
+          <td><div class="tbl-title">${a.title||'—'}</div><div class="tbl-meta">${a.source||''}</div></td>
+          <td><span class="tbl-meta">${a.category||''}</span></td>
+          <td><span class="tbl-meta">${d}</span></td>
+          <td><span class="tbl-meta">${a.importance||''}</span></td>
+          <td><button class="tbl-del" onclick="deleteArticle('${a.id}')">Delete</button></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } catch(e) {
+    wrap.innerHTML = `<div class="empty-state">Could not load articles.</div>`;
+  }
+}
+
+window.deleteArticle = async function(id) {
+  if (!confirm('Delete this article? This cannot be undone.')) return;
+  try { await deleteDoc(doc(db,'articles',id)); loadArticleList(); }
+  catch(e) { alert('Delete failed: ' + e.message); }
+};
+</script>
+</body>
+</html>

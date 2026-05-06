@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vacancies Admin — Current4Exams</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { background: #F0F1F3; }
+    .admin-wrap { max-width: 860px; margin: 0 auto; padding: 24px 20px 60px; }
+    .admin-header { margin-bottom: 24px; }
+    .admin-title { font-size: 18px; font-weight: 500; }
+    .admin-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .tab-bar { display: flex; gap: 4px; margin-bottom: 20px; }
+    .tab-btn {
+      font-size: 12.5px; padding: 6px 16px; border-radius: var(--radius-sm);
+      border: 0.5px solid var(--border); background: var(--surface);
+      color: var(--text-secondary); cursor: pointer; font-family: var(--font); transition: all 0.12s;
+    }
+    .tab-btn.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .form-card {
+      background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: var(--radius-lg); padding: 24px 28px; margin-bottom: 20px;
+    }
+    .form-card h2 { font-size: 14px; font-weight: 500; margin-bottom: 18px; padding-bottom: 10px; border-bottom: 0.5px solid var(--border); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .form-row.tri { grid-template-columns: 1fr 1fr 1fr; }
+    .form-row.full { grid-template-columns: 1fr; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); }
+    .field input, .field select, .field textarea {
+      padding: 8px 11px; border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font);
+      color: var(--text-primary); background: var(--surface); outline: none;
+      transition: border-color 0.12s;
+    }
+    .field input:focus, .field select:focus { border-color: var(--brand-mid); }
+    .field textarea { resize: vertical; min-height: 72px; }
+    .action-row { display: flex; align-items: center; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 0.5px solid var(--border); }
+    .btn-publish {
+      padding: 9px 24px; background: var(--brand); color: #fff; border: none;
+      border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
+      font-family: var(--font); cursor: pointer; transition: background 0.12s;
+    }
+    .btn-publish:hover { background: var(--brand-dark); }
+    .btn-publish:disabled { background: var(--text-muted); cursor: not-allowed; }
+    .btn-clear {
+      padding: 9px 18px; background: none; border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font);
+      color: var(--text-secondary); cursor: pointer;
+    }
+    .status-msg { font-size: 12.5px; padding: 7px 13px; border-radius: var(--radius-sm); }
+    .status-msg.success { background: var(--brand-light); color: var(--brand-dark); }
+    .status-msg.error { background: #FCEBEB; color: #A32D2D; }
+    .vacancy-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .vacancy-table th {
+      text-align: left; padding: 9px 12px; background: #F7F8FA;
+      border-bottom: 0.5px solid var(--border); color: var(--text-muted);
+      font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .vacancy-table td { padding: 10px 12px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
+    .vacancy-table tr:last-child td { border-bottom: none; }
+    .vacancy-table tr:hover td { background: #F9FAFB; }
+    .tbl-del {
+      padding: 3px 9px; border-radius: 4px; border: 0.5px solid #FCEBEB;
+      background: #FCEBEB; color: #A32D2D; cursor: pointer; font-size: 11px; font-family: var(--font);
+    }
+    .v-state { font-size: 10px; padding: 2px 7px; border-radius: 10px; background: #E6F1FB; color: #185FA5; }
+    .deadline-hot { font-size: 10px; padding: 2px 7px; border-radius: 4px; background: #FCEBEB; color: #A32D2D; }
+    .deadline-ok  { font-size: 10px; padding: 2px 7px; border-radius: 4px; background: #EAF3DE; color: #3B6D11; }
+
+    /* Login */
+    .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 999; }
+    .login-box { background: var(--surface); border-radius: var(--radius-lg); padding: 32px 36px; width: 340px; text-align: center; }
+    .login-box h2 { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+    .login-box p { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
+    .login-box input { width: 100%; padding: 9px 12px; border: 0.5px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font); outline: none; margin-bottom: 12px; }
+    .login-box button { width: 100%; padding: 10px; background: var(--brand); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; font-family: var(--font); cursor: pointer; }
+    .login-err { font-size: 12px; color: #A32D2D; margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="logo" style="justify-content:center;margin-bottom:16px">
+      <div class="logo-icon"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:#0F6E56;fill:none;stroke-width:2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+      Current4Exams
+    </div>
+    <h2>Admin login</h2>
+    <p>Enter the admin password to continue</p>
+    <input type="password" id="pwInput" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">Login</button>
+    <div class="login-err hidden" id="loginErr">Incorrect password</div>
+  </div>
+</div>
+
+<header class="topbar">
+  <a href="index.html" class="logo">
+    <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+    Current4Exams
+  </a>
+  <nav class="nav-links">
+    <a href="index.html">← Public site</a>
+    <a href="admin.html">Articles</a>
+    <a href="admin-vacancies.html" class="active">Vacancies</a>
+  </nav>
+  <div style="font-size:12px;color:var(--text-muted)">Admin panel</div>
+</header>
+
+<div class="admin-wrap">
+  <div class="admin-header">
+    <div class="admin-title">Vacancy manager</div>
+    <div class="admin-subtitle">Add and manage exam vacancy listings shown on the homepage</div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="showTab('add')">Add vacancy</button>
+    <button class="tab-btn" onclick="showTab('list')">All vacancies</button>
+  </div>
+
+  <div id="tabAdd">
+    <div class="form-card">
+      <h2>Vacancy details</h2>
+      <div class="form-row full">
+        <div class="field">
+          <label>Title / Exam name *</label>
+          <input type="text" id="vTitle" placeholder="e.g. UPPSC PCS Prelims 2025">
+        </div>
+      </div>
+      <div class="form-row tri">
+        <div class="field">
+          <label>Number of posts</label>
+          <input type="text" id="vPosts" placeholder="e.g. 220">
+        </div>
+        <div class="field">
+          <label>State / Exam board *</label>
+          <select id="vState">
+            <option value="uppcs">UPPCS</option>
+            <option value="bpsc">BPSC</option>
+            <option value="up">UP (other)</option>
+            <option value="bihar">Bihar (other)</option>
+            <option value="central">Central Govt.</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Application deadline</label>
+          <input type="date" id="vDeadline">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label>Deadline label (if no fixed date)</label>
+          <input type="text" id="vDeadlineLabel" placeholder="e.g. Notif. expected, Opens Jul 2025">
+        </div>
+        <div class="field">
+          <label>Official notification link</label>
+          <input type="url" id="vLink" placeholder="https://uppsc.up.nic.in/...">
+        </div>
+      </div>
+      <div class="form-row full">
+        <div class="field">
+          <label>Notes (optional)</label>
+          <textarea id="vNotes" placeholder="Any additional details — eligibility, age limit, etc."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn-publish" id="btnAdd" onclick="addVacancy()">Add vacancy</button>
+      <button class="btn-clear" onclick="clearVacForm()">Clear</button>
+      <span id="vStatusMsg" class="status-msg hidden"></span>
+    </div>
+  </div>
+
+  <div id="tabList" class="hidden">
+    <div class="form-card">
+      <h2>All vacancies <span id="vacCount" style="font-weight:400;color:var(--text-muted)"></span></h2>
+      <div id="vacTableWrap"><div class="empty-state"><div class="spinner"></div>Loading...</div></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { firebaseConfig, ADMIN_PASSWORD } from './js/firebase-config.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import {
+  getFirestore, collection, addDoc, getDocs,
+  deleteDoc, doc, orderBy, query, Timestamp
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+window.doLogin = function() {
+  if (document.getElementById('pwInput').value === ADMIN_PASSWORD) {
+    document.getElementById('loginOverlay').style.display = 'none';
+    sessionStorage.setItem('pcs_admin','1');
+  } else { document.getElementById('loginErr').classList.remove('hidden'); }
+};
+if (sessionStorage.getItem('pcs_admin') === '1')
+  document.getElementById('loginOverlay').style.display = 'none';
+
+window.showTab = function(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active',(i===0&&tab==='add')||(i===1&&tab==='list')));
+  document.getElementById('tabAdd').classList.toggle('hidden', tab !== 'add');
+  document.getElementById('tabList').classList.toggle('hidden', tab !== 'list');
+  if (tab === 'list') loadVacList();
+};
+
+window.addVacancy = async function() {
+  const title = document.getElementById('vTitle').value.trim();
+  if (!title) { showStatus('Title is required.', 'error'); return; }
+
+  const dlVal = document.getElementById('vDeadline').value;
+  const deadline = dlVal ? Timestamp.fromDate(new Date(dlVal)) : null;
+
+  const btn = document.getElementById('btnAdd');
+  btn.disabled = true; btn.textContent = 'Adding...';
+  try {
+    await addDoc(collection(db,'vacancies'), {
+      title,
+      posts:         document.getElementById('vPosts').value.trim(),
+      state:         document.getElementById('vState').value,
+      deadline,
+      deadlineLabel: document.getElementById('vDeadlineLabel').value.trim(),
+      link:          document.getElementById('vLink').value.trim(),
+      notes:         document.getElementById('vNotes').value.trim(),
+      createdAt:     Timestamp.now()
+    });
+    showStatus('Vacancy added!', 'success');
+    clearVacForm();
+  } catch(e) {
+    showStatus('Error: ' + e.message, 'error');
+  } finally { btn.disabled = false; btn.textContent = 'Add vacancy'; }
+};
+
+function showStatus(msg, type) {
+  const el = document.getElementById('vStatusMsg');
+  el.textContent = msg; el.className = 'status-msg ' + type;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+window.clearVacForm = function() {
+  ['vTitle','vPosts','vDeadline','vDeadlineLabel','vLink','vNotes'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('vState').value = 'uppcs';
+};
+
+async function loadVacList() {
+  const wrap = document.getElementById('vacTableWrap');
+  wrap.innerHTML = `<div class="empty-state"><div class="spinner"></div>Loading...</div>`;
+  try {
+    const snap = await getDocs(query(collection(db,'vacancies'), orderBy('createdAt','desc')));
+    const vacs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    document.getElementById('vacCount').textContent = `(${vacs.length})`;
+    if (!vacs.length) { wrap.innerHTML = `<div class="empty-state">No vacancies added yet.</div>`; return; }
+    wrap.innerHTML = `<table class="vacancy-table">
+      <thead><tr><th>Title</th><th>Posts</th><th>State</th><th>Deadline</th><th></th></tr></thead>
+      <tbody>${vacs.map(v => {
+        const now = Date.now();
+        const dl = v.deadline?.toDate ? v.deadline.toDate() : null;
+        const daysLeft = dl ? Math.ceil((dl-now)/86400000) : null;
+        let dlHtml = v.deadlineLabel || '—';
+        if (dl) {
+          const cls = daysLeft <= 15 ? 'deadline-hot' : 'deadline-ok';
+          dlHtml = `<span class="${cls}">${dl.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span>`;
+        }
+        return `<tr>
+          <td>${v.title}</td>
+          <td>${v.posts||'—'}</td>
+          <td><span class="v-state">${(v.state||'').toUpperCase()}</span></td>
+          <td>${dlHtml}</td>
+          <td><button class="tbl-del" onclick="deleteVac('${v.id}')">Delete</button></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } catch(e) { wrap.innerHTML = `<div class="empty-state">Could not load vacancies.</div>`; }
+}
+
+window.deleteVac = async function(id) {
+  if (!confirm('Delete this vacancy?')) return;
+  try { await deleteDoc(doc(db,'vacancies',id)); loadVacList(); }
+  catch(e) { alert('Delete failed: ' + e.message); }
+};
+</script>
+</body>
+</html>

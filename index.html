@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Current4Exams — Current Affairs for UPPCS & BPSC</title>
+  <meta name="description" content="Daily current affairs for UPPCS and BPSC exam preparation — Current4Exams. Topic-wise articles from PIB, The Hindu, UP Govt, Bihar Govt and more.">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* page-specific overrides */
+    .article-card-skeleton {
+      background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: var(--radius-lg); padding: 13px 15px; margin-bottom: 10px;
+    }
+    .skel { background: var(--bg); border-radius: 4px; animation: pulse 1.2s ease-in-out infinite; }
+    .skel-title { height: 14px; width: 80%; margin-bottom: 8px; }
+    .skel-line  { height: 11px; width: 100%; margin-bottom: 5px; }
+    .skel-line.short { width: 60%; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  </style>
+</head>
+<body>
+
+<!-- ── Topbar ── -->
+<header class="topbar">
+  <a href="index.html" class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    </div>
+    Current4Exams
+  </a>
+
+  <nav class="nav-links">
+    <a href="index.html" class="active">Current Affairs</a>
+    <a href="#">PYQ Bank</a>
+    <a href="#">Mock Tests</a>
+    <a href="#">Study Notes</a>
+    <a href="#">Vacancies</a>
+  </nav>
+
+  <div class="state-tabs">
+    <button class="state-tab active" data-state="all">All</button>
+    <button class="state-tab" data-state="uppcs">UPPCS</button>
+    <button class="state-tab" data-state="bpsc">BPSC</button>
+  </div>
+</header>
+
+<!-- ── Date bar ── -->
+<div class="date-bar">
+  <div class="date-label">Showing: <strong id="displayDate">Today</strong></div>
+  <div class="date-nav">
+    <button class="date-btn" id="btnYesterday">← Yesterday</button>
+    <button class="date-btn active" id="btnToday">Today</button>
+    <button class="date-btn" id="btnWeek">This Week</button>
+    <button class="date-btn" id="btnMonth">This Month</button>
+  </div>
+</div>
+
+<!-- ── 3-column layout ── -->
+<div class="layout">
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="left-sidebar">
+    <div class="sidebar-section-title">Topic wise current affairs</div>
+
+    <div class="cat-item active" data-cat="current-affairs">
+      <div class="cat-icon" style="background:#E1F5EE">🌐</div>
+      <span class="cat-label">Current Affairs</span>
+      <span class="cat-count" id="cnt-current-affairs">—</span>
+    </div>
+    <div class="cat-item" data-cat="government-schemes">
+      <div class="cat-icon" style="background:#E6F1FB">🏛</div>
+      <span class="cat-label">Government Schemes</span>
+      <span class="cat-count" id="cnt-government-schemes">—</span>
+    </div>
+    <div class="cat-item" data-cat="economy-banking">
+      <div class="cat-icon" style="background:#FAEEDA">📊</div>
+      <span class="cat-label">Business, Economy & Banking</span>
+      <span class="cat-count" id="cnt-economy-banking">—</span>
+    </div>
+    <div class="cat-item" data-cat="defence">
+      <div class="cat-icon" style="background:#FAECE7">🛡</div>
+      <span class="cat-label">Defence</span>
+      <span class="cat-count" id="cnt-defence">—</span>
+    </div>
+    <div class="cat-item" data-cat="reports-indices">
+      <div class="cat-icon" style="background:#EEEDFE">📋</div>
+      <span class="cat-label">Reports and Indices</span>
+      <span class="cat-count" id="cnt-reports-indices">—</span>
+    </div>
+    <div class="cat-item" data-cat="environment">
+      <div class="cat-icon" style="background:#EAF3DE">🌿</div>
+      <span class="cat-label">Environment & Biodiversity</span>
+      <span class="cat-count" id="cnt-environment">—</span>
+    </div>
+    <div class="cat-item" data-cat="awards-honours">
+      <div class="cat-icon" style="background:#FBEAF0">🏆</div>
+      <span class="cat-label">Awards, Honours & Persons</span>
+      <span class="cat-count" id="cnt-awards-honours">—</span>
+    </div>
+    <div class="cat-item" data-cat="places-in-news">
+      <div class="cat-icon" style="background:#FAEEDA">📍</div>
+      <span class="cat-label">Places in News</span>
+      <span class="cat-count" id="cnt-places-in-news">—</span>
+    </div>
+    <div class="cat-item" data-cat="important-days">
+      <div class="cat-icon" style="background:#E6F1FB">📅</div>
+      <span class="cat-label">Important Days and Events</span>
+      <span class="cat-count" id="cnt-important-days">—</span>
+    </div>
+    <div class="cat-item" data-cat="sports">
+      <div class="cat-icon" style="background:#EAF3DE">⚽</div>
+      <span class="cat-label">Sports Current Affairs</span>
+      <span class="cat-count" id="cnt-sports">—</span>
+    </div>
+    <div class="cat-item" data-cat="science-technology">
+      <div class="cat-icon" style="background:#EEEDFE">💻</div>
+      <span class="cat-label">Science & Technology</span>
+      <span class="cat-count" id="cnt-science-technology">—</span>
+    </div>
+    <div class="cat-item" data-cat="summits-conferences">
+      <div class="cat-icon" style="background:#FAECE7">🤝</div>
+      <span class="cat-label">Summits and Conferences</span>
+      <span class="cat-count" id="cnt-summits-conferences">—</span>
+    </div>
+    <div class="cat-item" data-cat="international">
+      <div class="cat-icon" style="background:#E1F5EE">🌍</div>
+      <span class="cat-label">International</span>
+      <span class="cat-count" id="cnt-international">—</span>
+    </div>
+    <div class="cat-item" data-cat="art-culture">
+      <div class="cat-icon" style="background:#FBEAF0">🎨</div>
+      <span class="cat-label">Art & Culture</span>
+      <span class="cat-count" id="cnt-art-culture">—</span>
+    </div>
+
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section-title">UP specific</div>
+    <div class="cat-item" data-cat="up-schemes">
+      <div class="cat-icon" style="background:#FAEEDA">🏗</div>
+      <span class="cat-label">UP Govt. Schemes</span>
+      <span class="cat-count" id="cnt-up-schemes">—</span>
+    </div>
+    <div class="cat-item" data-cat="up-infrastructure">
+      <div class="cat-icon" style="background:#FAEEDA">🛣</div>
+      <span class="cat-label">UP Infrastructure</span>
+      <span class="cat-count" id="cnt-up-infrastructure">—</span>
+    </div>
+
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section-title">Bihar specific</div>
+    <div class="cat-item" data-cat="bihar-schemes">
+      <div class="cat-icon" style="background:#FAECE7">🏗</div>
+      <span class="cat-label">Bihar Govt. Schemes</span>
+      <span class="cat-count" id="cnt-bihar-schemes">—</span>
+    </div>
+    <div class="cat-item" data-cat="bihar-infrastructure">
+      <div class="cat-icon" style="background:#FAECE7">🛣</div>
+      <span class="cat-label">Bihar Infrastructure</span>
+      <span class="cat-count" id="cnt-bihar-infrastructure">—</span>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-content">
+    <div class="search-bar">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="searchInput" placeholder="Search current affairs, schemes, topics...">
+    </div>
+
+    <div class="section-header">
+      <div class="section-title">
+        <span id="sectionTitle">Current Affairs</span>
+        <span class="section-badge" id="sectionBadge">Loading...</span>
+      </div>
+      <div class="filter-row" id="filterRow">
+        <button class="filter-chip active" data-state-filter="all">All</button>
+        <button class="filter-chip" data-state-filter="uppcs">UPPCS</button>
+        <button class="filter-chip" data-state-filter="bpsc">BPSC</button>
+      </div>
+    </div>
+
+    <div id="articlesList">
+      <!-- Skeletons while loading -->
+      <div class="article-card-skeleton">
+        <div class="skel skel-title"></div>
+        <div class="skel skel-line"></div>
+        <div class="skel skel-line short"></div>
+      </div>
+      <div class="article-card-skeleton">
+        <div class="skel skel-title"></div>
+        <div class="skel skel-line"></div>
+        <div class="skel skel-line short"></div>
+      </div>
+      <div class="article-card-skeleton">
+        <div class="skel skel-title"></div>
+        <div class="skel skel-line"></div>
+        <div class="skel skel-line short"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT SIDEBAR -->
+  <aside class="right-sidebar">
+
+    <div class="widget-card">
+      <div class="widget-title">
+        <svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        Trending topics
+      </div>
+      <div id="trendingList">
+        <div class="empty-state" style="padding:16px 0; font-size:11px;">Loading...</div>
+      </div>
+    </div>
+
+    <div class="widget-card">
+      <div class="widget-title">
+        <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+        New / upcoming vacancies
+      </div>
+      <div id="vacancyList">
+        <div class="empty-state" style="padding:16px 0; font-size:11px;">Loading...</div>
+      </div>
+    </div>
+
+    <div class="widget-card">
+      <div class="widget-title">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Monthly digest
+      </div>
+      <div id="digestList">
+        <div class="empty-state" style="padding:16px 0; font-size:11px;">Loading...</div>
+      </div>
+    </div>
+
+  </aside>
+</div>
+
+<!-- ── Firebase + App JS ── -->
+<script type="module">
+import { firebaseConfig } from './js/firebase-config.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import {
+  getFirestore, collection, query, where,
+  orderBy, getDocs, Timestamp
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+// ── State ──
+let activeCategory   = 'current-affairs';
+let activeStateFilter = 'all';
+let activeDateRange  = 'today';
+let searchQuery      = '';
+let allArticles      = [];
+
+// ── Date helpers ──
+function todayRange() {
+  const s = new Date(); s.setHours(0,0,0,0);
+  const e = new Date(); e.setHours(23,59,59,999);
+  return { start: Timestamp.fromDate(s), end: Timestamp.fromDate(e) };
+}
+function yesterdayRange() {
+  const s = new Date(); s.setDate(s.getDate()-1); s.setHours(0,0,0,0);
+  const e = new Date(); e.setDate(e.getDate()-1); e.setHours(23,59,59,999);
+  return { start: Timestamp.fromDate(s), end: Timestamp.fromDate(e) };
+}
+function weekRange() {
+  const s = new Date(); s.setDate(s.getDate() - s.getDay()); s.setHours(0,0,0,0);
+  const e = new Date(); e.setHours(23,59,59,999);
+  return { start: Timestamp.fromDate(s), end: Timestamp.fromDate(e) };
+}
+function monthRange() {
+  const s = new Date(); s.setDate(1); s.setHours(0,0,0,0);
+  const e = new Date(); e.setHours(23,59,59,999);
+  return { start: Timestamp.fromDate(s), end: Timestamp.fromDate(e) };
+}
+function getDateRange(mode) {
+  if (mode === 'yesterday') return yesterdayRange();
+  if (mode === 'week')      return weekRange();
+  if (mode === 'month')     return monthRange();
+  return todayRange();
+}
+function formatDateLabel(mode) {
+  const opts = { weekday:'long', day:'numeric', month:'long', year:'numeric' };
+  if (mode === 'today')     return new Date().toLocaleDateString('en-IN', opts);
+  if (mode === 'yesterday') { const d=new Date(); d.setDate(d.getDate()-1); return d.toLocaleDateString('en-IN', opts); }
+  if (mode === 'week')      return 'This week';
+  return 'This month';
+}
+
+// ── Fetch articles ──
+async function fetchArticles() {
+  document.getElementById('articlesList').innerHTML = `
+    <div class="article-card-skeleton"><div class="skel skel-title"></div><div class="skel skel-line"></div><div class="skel skel-line short"></div></div>
+    <div class="article-card-skeleton"><div class="skel skel-title"></div><div class="skel skel-line"></div><div class="skel skel-line short"></div></div>`;
+
+  const { start, end } = getDateRange(activeDateRange);
+  try {
+    const q = query(
+      collection(db, 'articles'),
+      where('publishedAt', '>=', start),
+      where('publishedAt', '<=', end),
+      orderBy('publishedAt', 'desc')
+    );
+    const snap = await getDocs(q);
+    allArticles = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    updateCounts();
+    renderArticles();
+  } catch(e) {
+    document.getElementById('articlesList').innerHTML =
+      `<div class="empty-state">Could not load articles. Check Firebase config.</div>`;
+  }
+}
+
+// ── Count badges per category ──
+function updateCounts() {
+  const cats = [
+    'current-affairs','government-schemes','economy-banking','defence',
+    'reports-indices','environment','awards-honours','places-in-news',
+    'important-days','sports','science-technology','summits-conferences',
+    'international','art-culture','up-schemes','up-infrastructure',
+    'bihar-schemes','bihar-infrastructure'
+  ];
+  cats.forEach(cat => {
+    const el = document.getElementById('cnt-' + cat);
+    if (el) el.textContent = allArticles.filter(a => a.category === cat).length || '0';
+  });
+}
+
+// ── Tag color helper ──
+function tagClass(cat) {
+  const map = {
+    'current-affairs':'tag-ca','government-schemes':'tag-schemes',
+    'economy-banking':'tag-economy','defence':'tag-defence',
+    'reports-indices':'tag-reports','environment':'tag-environment',
+    'awards-honours':'tag-awards','places-in-news':'tag-places',
+    'important-days':'tag-days','sports':'tag-sports',
+    'science-technology':'tag-science','summits-conferences':'tag-summits',
+    'international':'tag-international','art-culture':'tag-culture',
+    'up-schemes':'tag-up','up-infrastructure':'tag-up',
+    'bihar-schemes':'tag-bihar','bihar-infrastructure':'tag-bihar'
+  };
+  return map[cat] || 'tag-ca';
+}
+
+function catLabel(cat) {
+  const map = {
+    'current-affairs':'Current Affairs','government-schemes':'Govt. Schemes',
+    'economy-banking':'Economy','defence':'Defence','reports-indices':'Reports',
+    'environment':'Environment','awards-honours':'Awards','places-in-news':'Places',
+    'important-days':'Important Days','sports':'Sports','science-technology':'Science & Tech',
+    'summits-conferences':'Summits','international':'International','art-culture':'Art & Culture',
+    'up-schemes':'UP Schemes','up-infrastructure':'UP Infra',
+    'bihar-schemes':'Bihar Schemes','bihar-infrastructure':'Bihar Infra'
+  };
+  return map[cat] || cat;
+}
+
+function stateTagHtml(states) {
+  if (!states || states.includes('all')) return '';
+  return states.map(s =>
+    s === 'uppcs' ? `<span class="tag tag-up">UPPCS</span>` : `<span class="tag tag-bihar">BPSC</span>`
+  ).join('');
+}
+
+function impDot(imp) {
+  if (imp === 'high') return '<div class="imp-dot imp-high"></div>';
+  if (imp === 'low')  return '<div class="imp-dot imp-low"></div>';
+  return '<div class="imp-dot imp-med"></div>';
+}
+
+function timeStr(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+}
+
+// ── Render articles ──
+function renderArticles() {
+  let filtered = allArticles.filter(a => a.category === activeCategory);
+
+  if (activeStateFilter !== 'all')
+    filtered = filtered.filter(a => !a.states || a.states.includes('all') || a.states.includes(activeStateFilter));
+
+  if (searchQuery.trim())
+    filtered = filtered.filter(a =>
+      (a.title||'').toLowerCase().includes(searchQuery) ||
+      (a.summary||'').toLowerCase().includes(searchQuery)
+    );
+
+  // Section title
+  document.getElementById('sectionTitle').textContent = catLabel(activeCategory);
+  document.getElementById('sectionBadge').textContent = filtered.length + ' article' + (filtered.length !== 1 ? 's' : '');
+
+  const list = document.getElementById('articlesList');
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty-state">No articles found for this category and date range.</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(a => `
+    <div class="article-card" onclick="window.location='article.html?id=${a.id}'">
+      <div class="article-meta">
+        <span class="tag ${tagClass(a.category)}">${catLabel(a.category)}</span>
+        ${stateTagHtml(a.states)}
+        <span class="article-time">${timeStr(a.publishedAt)}</span>
+        ${a.source ? `<span class="article-source">· ${a.source}</span>` : ''}
+      </div>
+      <div class="article-title">${a.title || ''}</div>
+      <div class="article-summary">${a.summary || ''}</div>
+      <div class="article-footer">
+        <div class="importance">
+          ${impDot(a.importance)}
+          <span class="imp-label">${a.importance === 'high' ? 'High' : a.importance === 'low' ? 'Low' : 'Medium'} importance · ${a.relevance || 'Prelims + Mains'}</span>
+        </div>
+        <span class="read-btn">Read full →</span>
+      </div>
+    </div>`).join('');
+}
+
+// ── Trending topics ──
+async function loadTrending() {
+  // Count category occurrences from today's articles
+  const counts = {};
+  allArticles.forEach(a => {
+    const k = catLabel(a.category);
+    counts[k] = (counts[k] || 0) + 1;
+  });
+  const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,7);
+  const el = document.getElementById('trendingList');
+  if (!sorted.length) { el.innerHTML = `<div class="empty-state" style="padding:12px 0;font-size:11px;">No data yet</div>`; return; }
+  el.innerHTML = sorted.map(([name, cnt]) => `
+    <div class="topic-item">
+      <span class="topic-name">${name}</span>
+      <span class="topic-badge">${cnt}</span>
+    </div>`).join('');
+}
+
+// ── Vacancies ──
+async function loadVacancies() {
+  const el = document.getElementById('vacancyList');
+  try {
+    const snap = await getDocs(query(collection(db, 'vacancies'), orderBy('deadline', 'asc')));
+    const vacancies = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!vacancies.length) { el.innerHTML = `<div class="empty-state" style="padding:12px 0;font-size:11px;">No vacancies yet</div>`; return; }
+    el.innerHTML = vacancies.map(v => {
+      const now = Date.now();
+      const dl = v.deadline?.toDate ? v.deadline.toDate() : null;
+      const daysLeft = dl ? Math.ceil((dl - now) / 86400000) : null;
+      let dlClass = 'deadline-upcoming', dlText = v.deadlineLabel || 'TBA';
+      if (dl) {
+        dlText = dl.toLocaleDateString('en-IN', { day:'numeric', month:'short' });
+        if (daysLeft <= 15) dlClass = 'deadline-hot';
+        else dlClass = 'deadline-ok';
+      }
+      return `<div class="vacancy-item">
+        <div class="vacancy-org">${v.title}</div>
+        <div class="vacancy-meta">
+          ${v.posts ? `<span class="vacancy-posts">${v.posts} posts</span>` : ''}
+          <span class="vacancy-state">${(v.state||'').toUpperCase()}</span>
+          <span class="vacancy-deadline ${dlClass}">${dlText}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state" style="padding:12px 0;font-size:11px;">Could not load vacancies</div>`;
+  }
+}
+
+// ── Monthly digest ──
+async function loadDigest() {
+  const el = document.getElementById('digestList');
+  try {
+    const snap = await getDocs(query(collection(db, 'digests'), orderBy('month', 'desc')));
+    const digests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    if (!digests.length) { el.innerHTML = `<div class="empty-state" style="padding:12px 0;font-size:11px;">No digests yet</div>`; return; }
+    el.innerHTML = digests.slice(0,4).map(d => `
+      <div class="monthly-item">
+        <span class="monthly-name">${d.label}</span>
+        <button class="dl-btn" onclick="window.open('${d.url}','_blank')">Download PDF</button>
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="empty-state" style="padding:12px 0;font-size:11px;">No digests yet</div>`;
+  }
+}
+
+// ── Event listeners ──
+
+// Category sidebar
+document.querySelectorAll('.cat-item').forEach(el => {
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.cat-item').forEach(x => x.classList.remove('active'));
+    el.classList.add('active');
+    activeCategory = el.dataset.cat;
+    renderArticles();
+  });
+});
+
+// State tabs (topbar)
+document.querySelectorAll('.state-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.state-tab').forEach(x => x.classList.remove('active'));
+    btn.classList.add('active');
+    activeStateFilter = btn.dataset.state;
+    renderArticles();
+  });
+});
+
+// Filter chips (inline)
+document.querySelectorAll('.filter-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-chip').forEach(x => x.classList.remove('active'));
+    btn.classList.add('active');
+    activeStateFilter = btn.dataset.stateFilter;
+    renderArticles();
+  });
+});
+
+// Date nav
+const dateMap = { btnYesterday:'yesterday', btnToday:'today', btnWeek:'week', btnMonth:'month' };
+Object.entries(dateMap).forEach(([id, mode]) => {
+  document.getElementById(id).addEventListener('click', () => {
+    document.querySelectorAll('.date-btn').forEach(x => x.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    activeDateRange = mode;
+    document.getElementById('displayDate').textContent = formatDateLabel(mode);
+    fetchArticles().then(() => loadTrending());
+  });
+});
+
+// Search
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchQuery = e.target.value.toLowerCase();
+  renderArticles();
+});
+
+// ── Init ──
+document.getElementById('displayDate').textContent = formatDateLabel('today');
+fetchArticles().then(() => {
+  loadTrending();
+  loadVacancies();
+  loadDigest();
+});
+</script>
+</body>
+</html>
