@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CA Generator — Current4Exams</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { background: #F0F1F3; }
+    .admin-wrap { max-width: 920px; margin: 0 auto; padding: 24px 20px 60px; }
+    .admin-title { font-size: 18px; font-weight: 500; }
+    .admin-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; margin-bottom: 20px; }
+
+    /* Method tabs */
+    .method-tabs { display: flex; gap: 6px; margin-bottom: 22px; flex-wrap: wrap; }
+    .method-tab {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 18px; border-radius: var(--radius-md);
+      border: 0.5px solid var(--border); background: var(--surface);
+      color: var(--text-secondary); cursor: pointer; font-family: var(--font);
+      font-size: 13px; transition: all 0.15s;
+    }
+    .method-tab .tab-icon { font-size: 16px; }
+    .method-tab:hover { border-color: var(--brand-mid); color: var(--brand); }
+    .method-tab.active { background: var(--brand); color: #fff; border-color: var(--brand); font-weight: 500; }
+
+    /* Form cards */
+    .form-card {
+      background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: var(--radius-lg); padding: 24px 28px; margin-bottom: 16px;
+    }
+    .form-card h2 { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+    .form-card .card-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 18px; padding-bottom: 14px; border-bottom: 0.5px solid var(--border); }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .form-row.full { grid-template-columns: 1fr; }
+    .form-row.tri  { grid-template-columns: 1fr 1fr 1fr; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label { font-size: 11.5px; font-weight: 500; color: var(--text-secondary); }
+    .field input, .field select, .field textarea {
+      padding: 8px 11px; border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font);
+      color: var(--text-primary); background: var(--surface); outline: none; transition: border-color 0.12s;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--brand-mid); }
+    .field textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+    .field textarea.tall { min-height: 200px; }
+
+    .action-row { display: flex; align-items: center; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 0.5px solid var(--border); flex-wrap: wrap; }
+    .btn-primary {
+      padding: 9px 24px; background: var(--brand); color: #fff; border: none;
+      border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
+      font-family: var(--font); cursor: pointer; transition: background 0.12s;
+    }
+    .btn-primary:hover { background: var(--brand-dark); }
+    .btn-primary:disabled { background: var(--text-muted); cursor: not-allowed; }
+    .btn-secondary {
+      padding: 9px 18px; background: none; border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font);
+      color: var(--text-secondary); cursor: pointer; transition: all 0.12s;
+    }
+    .btn-secondary:hover { border-color: var(--border-hover); color: var(--text-primary); }
+
+    .status-msg { font-size: 12.5px; padding: 7px 13px; border-radius: var(--radius-sm); }
+    .status-msg.success { background: var(--brand-light); color: var(--brand-dark); }
+    .status-msg.error   { background: #FCEBEB; color: #A32D2D; }
+    .status-msg.info    { background: #E6F1FB; color: #185FA5; }
+
+    /* AI preview pane */
+    .preview-card {
+      background: #FAFAFA; border: 0.5px solid var(--border);
+      border-radius: var(--radius-lg); padding: 0; margin-bottom: 16px; overflow: hidden;
+    }
+    .preview-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px; border-bottom: 0.5px solid var(--border);
+      background: var(--surface);
+    }
+    .preview-title { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+    .preview-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: var(--brand-light); color: var(--brand); }
+    .preview-body { padding: 18px 20px; max-height: 520px; overflow-y: auto; }
+    .preview-body::-webkit-scrollbar { width: 3px; }
+    .preview-body::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    /* Generated article preview cards */
+    .gen-article {
+      background: var(--surface); border: 0.5px solid var(--border);
+      border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 12px;
+    }
+    .gen-article-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .gen-article-title { font-size: 13.5px; font-weight: 500; line-height: 1.4; flex: 1; }
+    .gen-article-meta { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+    .gen-article-summary { font-size: 12px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px; }
+    .gen-article-facts { font-size: 11.5px; color: var(--text-muted); }
+    .gen-article-actions { display: flex; gap: 6px; margin-top: 10px; }
+    .btn-approve {
+      padding: 5px 14px; background: var(--brand); color: #fff; border: none;
+      border-radius: var(--radius-sm); font-size: 11.5px; font-weight: 500;
+      font-family: var(--font); cursor: pointer;
+    }
+    .btn-reject {
+      padding: 5px 12px; background: #FCEBEB; color: #A32D2D; border: none;
+      border-radius: var(--radius-sm); font-size: 11.5px; font-family: var(--font); cursor: pointer;
+    }
+    .btn-edit-toggle {
+      padding: 5px 12px; background: #E6F1FB; color: #185FA5; border: none;
+      border-radius: var(--radius-sm); font-size: 11.5px; font-family: var(--font); cursor: pointer;
+    }
+    .edit-panel { display: none; margin-top: 12px; padding-top: 12px; border-top: 0.5px solid var(--border); }
+    .edit-panel.open { display: block; }
+    .edit-panel textarea, .edit-panel input, .edit-panel select {
+      width: 100%; padding: 8px 10px; border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm); font-size: 12.5px; font-family: var(--font);
+      color: var(--text-primary); outline: none; margin-bottom: 8px;
+    }
+    .edit-panel textarea { resize: vertical; min-height: 80px; }
+    .edit-panel label { font-size: 11px; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px; }
+
+    /* Category checkboxes */
+    .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; }
+    .cat-check-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px; border: 0.5px solid var(--border);
+      border-radius: var(--radius-sm); background: var(--surface);
+      cursor: pointer; transition: all 0.12s; font-size: 12px;
+    }
+    .cat-check-item:hover { border-color: var(--brand-mid); }
+    .cat-check-item input[type=checkbox] { accent-color: var(--brand); width: 13px; height: 13px; }
+
+    /* Exam target tags */
+    .exam-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 14px; }
+    .exam-tag {
+      display: flex; align-items: center; gap: 5px;
+      padding: 4px 11px; border-radius: 20px;
+      border: 0.5px solid var(--border); background: var(--surface);
+      font-size: 11.5px; cursor: pointer; font-family: var(--font); color: var(--text-secondary);
+      transition: all 0.12s;
+    }
+    .exam-tag input { display: none; }
+    .exam-tag.selected { background: var(--brand-light); color: var(--brand); border-color: var(--brand-mid); font-weight: 500; }
+
+    /* Progress log */
+    .progress-log {
+      background: #0F1923; border-radius: var(--radius-md);
+      padding: 14px 16px; font-family: monospace; font-size: 12px;
+      color: #A8D5BA; max-height: 200px; overflow-y: auto;
+      line-height: 1.7;
+    }
+    .progress-log .log-error { color: #FF7B7B; }
+    .progress-log .log-info  { color: #7BBFFF; }
+    .progress-log .log-done  { color: #A8D5BA; }
+
+    /* GitHub Actions status */
+    .gh-status-card {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 18px; background: var(--surface);
+      border: 0.5px solid var(--border); border-radius: var(--radius-md); margin-bottom: 12px;
+    }
+    .gh-status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .gh-status-dot.green  { background: #3B6D11; }
+    .gh-status-dot.orange { background: #EF9F27; }
+    .gh-status-dot.red    { background: #E24B4A; }
+    .gh-status-dot.grey   { background: var(--text-muted); }
+    .gh-status-label { font-size: 13px; font-weight: 500; flex: 1; }
+    .gh-status-time  { font-size: 11.5px; color: var(--text-muted); }
+
+    /* Login overlay */
+    .login-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 999; }
+    .login-box { background: var(--surface); border-radius: var(--radius-lg); padding: 32px 36px; width: 340px; text-align: center; }
+    .login-box h2 { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+    .login-box p { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
+    .google-btn {
+      width: 100%; padding: 10px 16px; background: #fff; border: 1px solid #ddd;
+      border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; font-family: var(--font);
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .google-btn:hover { background: #f5f5f5; }
+    .login-err { font-size: 12px; color: #A32D2D; margin-top: 12px; }
+    .signout-btn {
+      font-size: 11.5px; padding: 3px 10px; border-radius: var(--radius-sm);
+      border: 0.5px solid var(--border); background: none; cursor: pointer;
+      font-family: var(--font); color: var(--text-secondary);
+    }
+
+    /* Info box */
+    .info-box {
+      background: #E6F1FB; border: 0.5px solid #B5D4F4;
+      border-radius: var(--radius-md); padding: 12px 15px;
+      font-size: 12px; color: #185FA5; margin-bottom: 16px;
+      line-height: 1.6;
+    }
+    .info-box strong { font-weight: 500; }
+  </style>
+</head>
+<body>
+
+<!-- Login overlay -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="logo" style="justify-content:center;margin-bottom:16px">
+      <div class="logo-icon"><svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:#0F6E56;fill:none;stroke-width:2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+      Current4Exams
+    </div>
+    <h2>Admin login</h2>
+    <p>Sign in with your Google account to access the CA generator</p>
+    <button class="google-btn" onclick="doGoogleLogin()">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style="width:18px;height:18px">
+      Sign in with Google
+    </button>
+    <div class="login-err hidden" id="loginErr">Access denied. Only admin can log in.</div>
+  </div>
+</div>
+
+<!-- Topbar -->
+<header class="topbar">
+  <a href="index.html" class="logo">
+    <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+    Current4Exams
+  </a>
+  <nav class="nav-links">
+    <a href="index.html">← Public site</a>
+    <a href="admin.html">Articles</a>
+    <a href="admin-vacancies.html">Vacancies</a>
+    <a href="admin-ca-generator.html" class="active">CA Generator</a>
+  </nav>
+  <div id="userBar" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted)">Admin panel</div>
+</header>
+
+<div class="admin-wrap">
+  <div class="admin-title">Current Affairs Generator</div>
+  <div class="admin-subtitle">Three methods to generate exam-ready current affairs articles → Firestore</div>
+
+  <!-- Method tabs -->
+  <div class="method-tabs">
+    <button class="method-tab active" onclick="showMethod('auto')" id="tab-auto">
+      <span class="tab-icon">🤖</span> Auto-fetch (Daily)
+    </button>
+    <button class="method-tab" onclick="showMethod('url')" id="tab-url">
+      <span class="tab-icon">🔗</span> Fetch from URL
+    </button>
+    <button class="method-tab" onclick="showMethod('paste')" id="tab-paste">
+      <span class="tab-icon">📋</span> Paste & Format
+    </button>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       METHOD 1 — Auto-fetch (GitHub Actions)
+  ═══════════════════════════════════════════════ -->
+  <div id="method-auto">
+    <div class="form-card">
+      <h2>🤖 Auto Daily Generation</h2>
+      <div class="card-desc">
+        Runs automatically every day at 6:30 AM IST via GitHub Actions. Generates articles for all 17 categories across UPSC, UPPCS, BPSC, SSC CGL & UPSSSC. You can also trigger it manually below.
+      </div>
+
+      <div class="info-box">
+        <strong>Setup required:</strong> Add these secrets to your GitHub repo (Settings → Secrets → Actions):
+        <br>• <code>GROQ_API_KEY</code> — your Groq API key (free at console.groq.com)
+        <br>• <code>FIREBASE_API_KEY</code> — from firebase-config.js
+        <br>• <code>FIREBASE_PROJECT_ID</code> — <code>current4exams</code>
+      </div>
+
+      <div class="form-row tri">
+        <div class="field">
+          <label>GitHub Username</label>
+          <input type="text" id="ghUser" placeholder="your-github-username">
+        </div>
+        <div class="field">
+          <label>Repo Name</label>
+          <input type="text" id="ghRepo" placeholder="current4exams" value="current4exams">
+        </div>
+        <div class="field">
+          <label>GitHub Token (with Actions scope)</label>
+          <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxx">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="field">
+          <label>Date override (blank = today)</label>
+          <input type="date" id="ghDate">
+        </div>
+        <div class="field">
+          <label>Category filter (blank = all 17 categories)</label>
+          <select id="ghCategory">
+            <option value="">All categories</option>
+            <option value="government-schemes">Government Schemes</option>
+            <option value="economy-banking">Economy & Banking</option>
+            <option value="defence">Defence</option>
+            <option value="reports-indices">Reports & Indices</option>
+            <option value="environment">Environment</option>
+            <option value="awards-honours">Awards & Honours</option>
+            <option value="places-in-news">Places in News</option>
+            <option value="important-days">Important Days</option>
+            <option value="sports">Sports</option>
+            <option value="science-technology">Science & Technology</option>
+            <option value="summits-conferences">Summits & Conferences</option>
+            <option value="international">International Affairs</option>
+            <option value="art-culture">Art & Culture</option>
+            <option value="up-schemes">UP Schemes</option>
+            <option value="up-infrastructure">UP Infrastructure</option>
+            <option value="bihar-schemes">Bihar Schemes</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn-primary" onclick="triggerGitHubAction()" id="btnTrigger">▶ Trigger now</button>
+        <button class="btn-secondary" onclick="checkRunStatus()">↻ Check status</button>
+        <span id="ghStatusMsg" class="status-msg hidden"></span>
+      </div>
+
+      <div id="ghRunStatus" style="margin-top:16px;display:none">
+        <div class="gh-status-card">
+          <div class="gh-status-dot grey" id="runDot"></div>
+          <div>
+            <div class="gh-status-label" id="runLabel">Checking...</div>
+            <div class="gh-status-time" id="runTime"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Schedule info card -->
+    <div class="form-card">
+      <h2>📅 Automatic schedule</h2>
+      <div class="card-desc">The workflow runs on this schedule automatically once set up.</div>
+      <table style="width:100%;font-size:12.5px;border-collapse:collapse">
+        <thead>
+          <tr style="background:#F7F8FA">
+            <th style="padding:8px 12px;text-align:left;font-weight:500;color:var(--text-muted);border-bottom:0.5px solid var(--border)">Time</th>
+            <th style="padding:8px 12px;text-align:left;font-weight:500;color:var(--text-muted);border-bottom:0.5px solid var(--border)">What happens</th>
+            <th style="padding:8px 12px;text-align:left;font-weight:500;color:var(--text-muted);border-bottom:0.5px solid var(--border)">Articles generated</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td style="padding:9px 12px;border-bottom:0.5px solid var(--border)">6:30 AM IST daily</td><td style="padding:9px 12px;border-bottom:0.5px solid var(--border)">All 17 categories generated</td><td style="padding:9px 12px;border-bottom:0.5px solid var(--border)">~34 articles (2 per category)</td></tr>
+          <tr><td style="padding:9px 12px;border-bottom:0.5px solid var(--border)">Manual trigger</td><td style="padding:9px 12px;border-bottom:0.5px solid var(--border)">Selected categories only</td><td style="padding:9px 12px;border-bottom:0.5px solid var(--border)">2 per selected category</td></tr>
+          <tr><td style="padding:9px 12px">URL / Paste method</td><td style="padding:9px 12px">1 article at a time, review before publish</td><td style="padding:9px 12px">1 per generation</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       METHOD 2 — Fetch from URL
+  ═══════════════════════════════════════════════ -->
+  <div id="method-url" class="hidden">
+    <div class="form-card">
+      <h2>🔗 Generate from URL</h2>
+      <div class="card-desc">
+        Paste any news article URL (PIB, The Hindu, Indian Express, RBI, MEA, ISRO etc.). AI will read it and generate an exam-ready article.
+      </div>
+
+      <div class="form-row full">
+        <div class="field">
+          <label>Article URL *</label>
+          <input type="url" id="urlInput" placeholder="https://pib.gov.in/PressReleasePage.aspx?PRID=...">
+        </div>
+      </div>
+
+      <div class="form-row tri">
+        <div class="field">
+          <label>Category</label>
+          <select id="urlCategory">
+            <option value="government-schemes">Government Schemes</option>
+            <option value="economy-banking">Economy & Banking</option>
+            <option value="defence">Defence</option>
+            <option value="reports-indices">Reports & Indices</option>
+            <option value="environment">Environment</option>
+            <option value="awards-honours">Awards & Honours</option>
+            <option value="places-in-news">Places in News</option>
+            <option value="important-days">Important Days</option>
+            <option value="sports">Sports</option>
+            <option value="science-technology">Science & Tech</option>
+            <option value="summits-conferences">Summits</option>
+            <option value="international">International</option>
+            <option value="art-culture">Art & Culture</option>
+            <option value="up-schemes">UP Schemes</option>
+            <option value="up-infrastructure">UP Infra</option>
+            <option value="bihar-schemes">Bihar Schemes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Importance</label>
+          <select id="urlImportance">
+            <option value="high">High</option>
+            <option value="medium" selected>Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Target exams</label>
+          <select id="urlExams" multiple style="min-height:68px">
+            <option value="upsc" selected>UPSC</option>
+            <option value="uppcs" selected>UPPCS</option>
+            <option value="bpsc">BPSC</option>
+            <option value="ssc" selected>SSC CGL</option>
+            <option value="upsssc">UPSSSC</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Your Groq API Key</label>
+        <input type="password" id="urlGroqKey" placeholder="gsk_xxxxxxxxxxxx (stored in session only)">
+      </div>
+
+      <div class="action-row">
+        <button class="btn-primary" onclick="generateFromUrl()" id="btnUrlGen">🔍 Fetch & Generate</button>
+        <span id="urlStatusMsg" class="status-msg hidden"></span>
+      </div>
+    </div>
+
+    <div id="urlPreview" class="hidden">
+      <div class="preview-card">
+        <div class="preview-header">
+          <div class="preview-title">Generated article <span class="preview-badge">Review before publishing</span></div>
+          <button class="btn-secondary" onclick="document.getElementById('urlPreview').classList.add('hidden')">✕ Discard</button>
+        </div>
+        <div class="preview-body" id="urlPreviewBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       METHOD 3 — Paste & Format
+  ═══════════════════════════════════════════════ -->
+  <div id="method-paste" class="hidden">
+    <div class="form-card">
+      <h2>📋 Paste raw news → Format</h2>
+      <div class="card-desc">
+        Read news from any source (The Hindu, PIB, Dainik Jagran, etc.), paste the raw text below, and AI will format it into a proper exam-ready article with keyFacts, examNote, and Firestore-ready structure.
+      </div>
+
+      <div class="info-box">
+        <strong>Tip:</strong> You can paste multiple news items at once separated by <code>---</code> and select "Generate multiple". Works great for daily notes or WhatsApp forwards.
+      </div>
+
+      <div class="form-row full">
+        <div class="field">
+          <label>Raw news text (paste here) *</label>
+          <textarea class="tall" id="pasteInput" placeholder="Paste raw news text here. Can be from newspaper, PIB, WhatsApp, or any source. E.g.:
+
+The Reserve Bank of India today raised the repo rate by 25 basis points to 6.75%...
+
+---
+
+ISRO successfully launched the NVS-02 navigation satellite aboard GSLV-F15..."></textarea>
+        </div>
+      </div>
+
+      <div class="form-row tri">
+        <div class="field">
+          <label>Category *</label>
+          <select id="pasteCategory">
+            <option value="government-schemes">Government Schemes</option>
+            <option value="economy-banking">Economy & Banking</option>
+            <option value="defence">Defence</option>
+            <option value="reports-indices">Reports & Indices</option>
+            <option value="environment">Environment</option>
+            <option value="awards-honours">Awards & Honours</option>
+            <option value="places-in-news">Places in News</option>
+            <option value="important-days">Important Days</option>
+            <option value="sports">Sports</option>
+            <option value="science-technology">Science & Tech</option>
+            <option value="summits-conferences">Summits</option>
+            <option value="international">International</option>
+            <option value="art-culture">Art & Culture</option>
+            <option value="up-schemes">UP Schemes</option>
+            <option value="up-infrastructure">UP Infra</option>
+            <option value="bihar-schemes">Bihar Schemes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Target state audience</label>
+          <select id="pasteStates" multiple style="min-height:68px">
+            <option value="all" selected>All (National)</option>
+            <option value="uppcs">UPPCS</option>
+            <option value="bpsc">BPSC</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Groq API Key</label>
+          <input type="password" id="pasteGroqKey" placeholder="gsk_xxxxxxxxxxxx">
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:14px">
+        <label>Additional context for AI (optional)</label>
+        <input type="text" id="pasteContext" placeholder="e.g. Focus on UPPCS angle, highlight UP connection, this is from PIB dated 15 May 2025">
+      </div>
+
+      <div class="action-row">
+        <button class="btn-primary" onclick="generateFromPaste()" id="btnPasteGen">✨ Format with AI</button>
+        <span id="pasteStatusMsg" class="status-msg hidden"></span>
+      </div>
+    </div>
+
+    <div id="pastePreview" class="hidden">
+      <div class="preview-card">
+        <div class="preview-header">
+          <div class="preview-title">Formatted articles <span class="preview-badge" id="pastePreviewCount"></span></div>
+          <button class="btn-secondary" onclick="document.getElementById('pastePreview').classList.add('hidden')">✕ Discard all</button>
+        </div>
+        <div class="preview-body" id="pastePreviewBody"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { firebaseConfig } from './js/firebase-config.js';
+import { initializeApp }  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, collection, addDoc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+const app  = initializeApp(firebaseConfig);
+const db   = getFirestore(app);
+const auth = getAuth(app);
+const ADMIN_EMAIL = 'examhall1987@gmail.com';
+
+// ── Auth ──────────────────────────────────────────────────────────
+window.doGoogleLogin = async () => {
+  try {
+    const r = await signInWithPopup(auth, new GoogleAuthProvider());
+    if (r.user.email !== ADMIN_EMAIL) {
+      document.getElementById('loginErr').classList.remove('hidden');
+      await signOut(auth);
+    }
+  } catch(e) {
+    document.getElementById('loginErr').textContent = 'Login failed: ' + e.message;
+    document.getElementById('loginErr').classList.remove('hidden');
+  }
+};
+onAuthStateChanged(auth, u => {
+  if (u && u.email === ADMIN_EMAIL) {
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('userBar').innerHTML =
+      `<img src="${u.photoURL}" style="width:26px;height:26px;border-radius:50%"> ${u.displayName}
+       <button class="signout-btn" onclick="signOut(getAuth())">Sign out</button>`;
+  } else {
+    document.getElementById('loginOverlay').style.display = 'flex';
+  }
+});
+
+// ── Tab switching ─────────────────────────────────────────────────
+window.showMethod = (m) => {
+  ['auto','url','paste'].forEach(id => {
+    document.getElementById('method-'+id).classList.toggle('hidden', id !== m);
+    document.getElementById('tab-'+id).classList.toggle('active', id === m);
+  });
+};
+
+// ── Shared: Groq API call ─────────────────────────────────────────
+async function callGroq(apiKey, prompt) {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.35,
+      max_tokens: 2500,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!res.ok) throw new Error(`Groq error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return data.choices[0].message.content.trim();
+}
+
+// ── Shared: save article to Firestore ────────────────────────────
+async function saveArticle(article) {
+  const now = new Date();
+  await addDoc(collection(db, 'articles'), {
+    ...article,
+    publishedAt: Timestamp.fromDate(article.publishedAt || now),
+    createdAt:   Timestamp.fromDate(now),
+    autoGenerated: true
+  });
+}
+
+// ── Shared: parse JSON from AI response ──────────────────────────
+function parseAIJson(raw) {
+  raw = raw.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'').trim();
+  return JSON.parse(raw);
+}
+
+// ── Shared: render article preview card ──────────────────────────
+function renderPreviewCard(article, index, containerId) {
+  const catColors = {
+    'government-schemes':'tag-schemes','economy-banking':'tag-economy','defence':'tag-defence',
+    'reports-indices':'tag-reports','environment':'tag-environment','awards-honours':'tag-awards',
+    'places-in-news':'tag-places','important-days':'tag-days','sports':'tag-sports',
+    'science-technology':'tag-science','summits-conferences':'tag-summits',
+    'international':'tag-international','art-culture':'tag-culture',
+    'up-schemes':'tag-up','up-infrastructure':'tag-up','bihar-schemes':'tag-bihar'
+  };
+  const impColors = { high:'#E24B4A', medium:'#EF9F27', low:'#639922' };
+  const keyFactsHtml = (article.keyFacts||[]).map(f =>
+    `<span style="margin-right:12px;font-size:11px;color:var(--text-muted)"><strong>${f.key}:</strong> ${f.value}</span>`
+  ).join('');
+
+  return `<div class="gen-article" id="genCard-${containerId}-${index}">
+    <div class="gen-article-header">
+      <div class="gen-article-title">${article.title || '(No title)'}</div>
+      <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
+        <div style="width:8px;height:8px;border-radius:50%;background:${impColors[article.importance]||'#EF9F27'}"></div>
+        <span style="font-size:11px;color:var(--text-secondary)">${article.importance||'medium'}</span>
+      </div>
+    </div>
+    <div class="gen-article-meta">
+      <span class="tag ${catColors[article.category]||'tag-ca'}" style="font-size:10px;padding:2px 8px;border-radius:20px;font-weight:500">${article.category||''}</span>
+      ${(article.examTags||[]).map(e => `<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#F0F0F0;color:#555">${e.toUpperCase()}</span>`).join('')}
+      ${article.source ? `<span style="font-size:10.5px;color:var(--text-muted)">· ${article.source}</span>` : ''}
+    </div>
+    <div class="gen-article-summary">${article.summary||''}</div>
+    ${keyFactsHtml ? `<div class="gen-article-facts">${keyFactsHtml}</div>` : ''}
+    ${article.examNote ? `<div style="margin-top:8px;padding:8px 10px;background:var(--brand-light);border-radius:6px;font-size:11.5px;color:var(--brand-dark)">📌 ${article.examNote}</div>` : ''}
+    <div class="gen-article-actions">
+      <button class="btn-approve" onclick="approveArticle(${index}, '${containerId}')">✓ Publish</button>
+      <button class="btn-reject"  onclick="document.getElementById('genCard-${containerId}-${index}').remove()">✕ Discard</button>
+      <button class="btn-edit-toggle" onclick="toggleEdit(${index},'${containerId}')">✏ Edit</button>
+    </div>
+    <div class="edit-panel" id="editPanel-${containerId}-${index}">
+      <label>Title</label>
+      <input type="text" id="editTitle-${containerId}-${index}" value="${(article.title||'').replace(/"/g,'&quot;')}">
+      <label>Summary</label>
+      <textarea id="editSummary-${containerId}-${index}">${article.summary||''}</textarea>
+      <label>Exam Note</label>
+      <input type="text" id="editExamNote-${containerId}-${index}" value="${(article.examNote||'').replace(/"/g,'&quot;')}">
+      <label>Importance</label>
+      <select id="editImp-${containerId}-${index}">
+        <option value="high" ${article.importance==='high'?'selected':''}>High</option>
+        <option value="medium" ${article.importance==='medium'?'selected':''}>Medium</option>
+        <option value="low" ${article.importance==='low'?'selected':''}>Low</option>
+      </select>
+    </div>
+  </div>`;
+}
+
+// Store articles globally for approval
+const pendingArticles = { url: [], paste: [] };
+
+window.toggleEdit = (idx, container) => {
+  const panel = document.getElementById(`editPanel-${container}-${idx}`);
+  panel.classList.toggle('open');
+};
+
+window.approveArticle = async (idx, container) => {
+  const article = pendingArticles[container][idx];
+  if (!article) return;
+
+  // Apply any edits
+  const titleEl   = document.getElementById(`editTitle-${container}-${idx}`);
+  const summaryEl = document.getElementById(`editSummary-${container}-${idx}`);
+  const examEl    = document.getElementById(`editExamNote-${container}-${idx}`);
+  const impEl     = document.getElementById(`editImp-${container}-${idx}`);
+  if (titleEl)   article.title      = titleEl.value.trim();
+  if (summaryEl) article.summary    = summaryEl.value.trim();
+  if (examEl)    article.examNote   = examEl.value.trim();
+  if (impEl)     article.importance = impEl.value;
+
+  const btn = document.querySelector(`#genCard-${container}-${idx} .btn-approve`);
+  if (btn) { btn.textContent = 'Publishing...'; btn.disabled = true; }
+  try {
+    await saveArticle(article);
+    const card = document.getElementById(`genCard-${container}-${idx}`);
+    if (card) card.innerHTML = `<div style="padding:12px;color:var(--brand);font-size:13px">✅ Published: <strong>${article.title}</strong></div>`;
+  } catch(e) {
+    if (btn) { btn.textContent = '✓ Publish'; btn.disabled = false; }
+    alert('Publish failed: ' + e.message);
+  }
+};
+
+// ── METHOD 1: GitHub Actions trigger ─────────────────────────────
+window.triggerGitHubAction = async () => {
+  const user  = document.getElementById('ghUser').value.trim();
+  const repo  = document.getElementById('ghRepo').value.trim();
+  const token = document.getElementById('ghToken').value.trim();
+  if (!user || !token) { showStatus('ghStatusMsg', 'Enter GitHub username and token.', 'error'); return; }
+
+  const dateVal = document.getElementById('ghDate').value;
+  const catVal  = document.getElementById('ghCategory').value;
+  const inputs  = {};
+  if (dateVal) inputs.date_override = { value: dateVal };
+  if (catVal)  inputs.categories = { value: catVal };
+
+  const btn = document.getElementById('btnTrigger');
+  btn.disabled = true; btn.textContent = 'Triggering...';
+  try {
+    const res = await fetch(`https://api.github.com/repos/${user}/${repo}/actions/workflows/fetch-ca.yml/dispatches`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: 'main', inputs })
+    });
+    if (res.status === 204) {
+      showStatus('ghStatusMsg', '✅ Workflow triggered! Check GitHub Actions for progress.', 'success');
+      setTimeout(() => checkRunStatus(), 5000);
+    } else {
+      const err = await res.json();
+      showStatus('ghStatusMsg', 'Error: ' + (err.message||res.status), 'error');
+    }
+  } catch(e) {
+    showStatus('ghStatusMsg', 'Error: ' + e.message, 'error');
+  } finally { btn.disabled = false; btn.textContent = '▶ Trigger now'; }
+};
+
+window.checkRunStatus = async () => {
+  const user  = document.getElementById('ghUser').value.trim();
+  const repo  = document.getElementById('ghRepo').value.trim();
+  const token = document.getElementById('ghToken').value.trim();
+  if (!user || !token) return;
+
+  document.getElementById('ghRunStatus').style.display = 'block';
+  document.getElementById('runLabel').textContent = 'Fetching latest run...';
+
+  try {
+    const res = await fetch(`https://api.github.com/repos/${user}/${repo}/actions/runs?per_page=5`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    const data = await res.json();
+    const run = data.workflow_runs?.[0];
+    if (!run) { document.getElementById('runLabel').textContent = 'No runs found.'; return; }
+
+    const dot = document.getElementById('runDot');
+    const statusMap = { completed: 'green', in_progress: 'orange', queued: 'orange', failure: 'red' };
+    dot.className = 'gh-status-dot ' + (statusMap[run.status]||'grey');
+    document.getElementById('runLabel').textContent =
+      `${run.name} — ${run.status}${run.conclusion ? ' ('+run.conclusion+')' : ''}`;
+    document.getElementById('runTime').textContent =
+      new Date(run.updated_at).toLocaleString('en-IN');
+  } catch(e) {
+    document.getElementById('runLabel').textContent = 'Could not fetch status.';
+  }
+};
+
+// ── METHOD 2: URL fetch ───────────────────────────────────────────
+window.generateFromUrl = async () => {
+  const url      = document.getElementById('urlInput').value.trim();
+  const category = document.getElementById('urlCategory').value;
+  const importance = document.getElementById('urlImportance').value;
+  const apiKey   = document.getElementById('urlGroqKey').value.trim() || sessionStorage.getItem('groqKey');
+  const exams    = [...document.getElementById('urlExams').selectedOptions].map(o => o.value);
+
+  if (!url) { showStatus('urlStatusMsg', 'Please enter a URL.', 'error'); return; }
+  if (!apiKey) { showStatus('urlStatusMsg', 'Enter your Groq API key.', 'error'); return; }
+  if (apiKey) sessionStorage.setItem('groqKey', apiKey);
+
+  const btn = document.getElementById('btnUrlGen');
+  btn.disabled = true; btn.textContent = '⏳ Fetching & generating...';
+  showStatus('urlStatusMsg', 'Fetching article content...', 'info');
+
+  try {
+    // Use a CORS proxy to fetch the URL
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    let articleText = '';
+    try {
+      const fetchRes = await fetch(proxyUrl);
+      const fetchData = await fetchRes.json();
+      // Strip HTML tags for clean text
+      const tmp = document.createElement('div');
+      tmp.innerHTML = fetchData.contents || '';
+      articleText = tmp.innerText.slice(0, 4000);
+    } catch(e) {
+      articleText = `URL provided: ${url}. Generate based on the URL and your knowledge of this source.`;
+    }
+
+    showStatus('urlStatusMsg', 'Generating exam-ready article...', 'info');
+
+    const prompt = `You are an expert current affairs writer for Indian competitive exams.
+
+A news article has been fetched from: ${url}
+Category: ${category}
+Target exams: ${exams.join(', ')}
+
+Article content:
+${articleText}
+
+Convert this into an exam-ready article. Return a single JSON object:
+{
+  "title": "Specific headline with key facts",
+  "summary": "2-3 lines with numbers, names, places",
+  "body": "Full HTML article (250+ words) with <p><h3><ul><strong> tags. Include background, details, significance.",
+  "category": "${category}",
+  "states": ["all"],
+  "source": "Source name from URL",
+  "importance": "${importance}",
+  "relevance": "Prelims + Mains",
+  "examNote": "Specific exam angle — what question can come, which paper/section",
+  "examTags": ${JSON.stringify(exams)},
+  "keyFacts": [
+    {"key": "Key fact 1 name", "value": "Specific value"},
+    {"key": "Key fact 2 name", "value": "Specific value"},
+    {"key": "Key fact 3 name", "value": "Specific value"},
+    {"key": "Key fact 4 name", "value": "Specific value"}
+  ]
+}
+
+Return ONLY the JSON object. No preamble, no markdown fences.`;
+
+    const raw = await callGroq(apiKey, prompt);
+    const article = parseAIJson(raw);
+    article.publishedAt = new Date();
+
+    pendingArticles.url = [article];
+
+    const previewDiv = document.getElementById('urlPreview');
+    document.getElementById('urlPreviewBody').innerHTML = renderPreviewCard(article, 0, 'url');
+    previewDiv.classList.remove('hidden');
+    showStatus('urlStatusMsg', '✅ Generated! Review and publish below.', 'success');
+  } catch(e) {
+    showStatus('urlStatusMsg', 'Error: ' + e.message, 'error');
+  } finally { btn.disabled = false; btn.textContent = '🔍 Fetch & Generate'; }
+};
+
+// ── METHOD 3: Paste & Format ──────────────────────────────────────
+window.generateFromPaste = async () => {
+  const rawText  = document.getElementById('pasteInput').value.trim();
+  const category = document.getElementById('pasteCategory').value;
+  const states   = [...document.getElementById('pasteStates').selectedOptions].map(o => o.value);
+  const apiKey   = document.getElementById('pasteGroqKey').value.trim() || sessionStorage.getItem('groqKey');
+  const context  = document.getElementById('pasteContext').value.trim();
+
+  if (!rawText) { showStatus('pasteStatusMsg', 'Please paste some news text.', 'error'); return; }
+  if (!apiKey)  { showStatus('pasteStatusMsg', 'Enter your Groq API key.', 'error'); return; }
+  if (apiKey) sessionStorage.setItem('groqKey', apiKey);
+
+  // Detect multiple articles by --- separator
+  const sections = rawText.split(/\n---+\n/).map(s => s.trim()).filter(Boolean);
+  const btn = document.getElementById('btnPasteGen');
+  btn.disabled = true; btn.textContent = `⏳ Formatting ${sections.length} item(s)...`;
+  showStatus('pasteStatusMsg', `Processing ${sections.length} news item(s)...`, 'info');
+
+  const allArticles = [];
+
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+    const prompt = `You are an expert current affairs writer for Indian competitive exams (UPSC, UPPCS, BPSC, SSC CGL, UPSSSC).
+
+Raw news text:
+${section}
+
+${context ? `Additional context: ${context}` : ''}
+
+Category: ${category}
+State audience: ${states.join(', ')}
+
+Format this into an exam-ready article. Return a single JSON object:
+{
+  "title": "Specific, fact-filled headline",
+  "summary": "2-3 sentences with key numbers, names, dates, places",
+  "body": "Full HTML article (200+ words) with <p><h3><ul><strong> tags. Include: what happened, background, key facts, why it matters for exams.",
+  "category": "${category}",
+  "states": ${JSON.stringify(states)},
+  "source": "Source name (from content or 'Various')",
+  "importance": "high|medium|low",
+  "relevance": "Prelims only|Prelims + Mains|Tier 1 + Tier 2",
+  "examNote": "Specific exam tip: which exam, which paper, what type of question to expect",
+  "examTags": ["upsc","uppcs","bpsc","ssc","upsssc"],
+  "keyFacts": [
+    {"key": "Fact label", "value": "Specific value"},
+    {"key": "Fact label", "value": "Specific value"},
+    {"key": "Fact label", "value": "Specific value"},
+    {"key": "Fact label", "value": "Specific value"}
+  ]
+}
+
+Rules:
+- Extract all numbers, dates, names exactly as in the source.
+- examTags: include only exams this topic is actually relevant for.
+- keyFacts values must be concrete — no vague phrases.
+- If UP/Bihar content, add relevant state context.
+
+Return ONLY the JSON object. No preamble, no markdown fences.`;
+
+    try {
+      const raw = await callGroq(apiKey, prompt);
+      const article = parseAIJson(raw);
+      article.publishedAt = new Date();
+      allArticles.push(article);
+    } catch(e) {
+      console.error(`Failed section ${i+1}:`, e.message);
+    }
+    // Small delay between calls
+    if (i < sections.length - 1) await new Promise(r => setTimeout(r, 1000));
+  }
+
+  pendingArticles.paste = allArticles;
+
+  const previewBody = document.getElementById('pastePreviewBody');
+  previewBody.innerHTML = allArticles.map((a, i) => renderPreviewCard(a, i, 'paste')).join('');
+  document.getElementById('pastePreviewCount').textContent = `${allArticles.length} article${allArticles.length>1?'s':''} — review before publishing`;
+  document.getElementById('pastePreview').classList.remove('hidden');
+
+  showStatus('pasteStatusMsg', `✅ ${allArticles.length} article(s) ready. Review and publish below.`, 'success');
+  btn.disabled = false; btn.textContent = '✨ Format with AI';
+};
+
+// ── Utility ───────────────────────────────────────────────────────
+function showStatus(elemId, msg, type) {
+  const el = document.getElementById(elemId);
+  el.textContent = msg;
+  el.className = 'status-msg ' + type;
+  el.classList.remove('hidden');
+  if (type !== 'info') setTimeout(() => el.classList.add('hidden'), 6000);
+}
+</script>
+</body>
+</html>
