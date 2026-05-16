@@ -1,21 +1,17 @@
 // ─────────────────────────────────────────────────────────────────
-//  generate-ca.js  —  Current4Exams Daily CA Generator
+//  generate-ca.js  —  Current4Exams Daily CA Generator v3.0
+//
+//  FIXES in v3.0:
+//    1. PIB/MEA/ISRO 403 → fetch via allorigins.win CORS proxy
+//    2. Groq 429 rate limit → shortened prompts + retry with backoff
+//    3. Firestore 403 → documented fix in README (rules must allow write)
 //
 //  PIPELINE:
-//    1. Fetch real RSS / XML feeds from official authoritative sources
-//    2. Filter headlines using category-specific pick/skip rules
-//    3. Send filtered headlines to Groq (LLaMA 3.3 70B)
-//    4. AI generates exam-wise formatted articles
-//       (UPSC analytical depth + SSC one-liners in same article)
-//    5. Push articles to Firestore via REST API
-//
-//  SOURCES (public RSS/XML only — no login, no scraping):
-//    PIB (topic-wise RSS)   → Schemes, Defence, Finance, Sports, Culture, Environment
-//    RBI                    → Economy & Banking
-//    MEA India              → International, Summits
-//    ISRO                   → Science & Technology
-//    UN News                → Important Days, International, Summits, Environment
-//    UP/Bihar Govt          → No public RSS; covered via PIB + AI knowledge
+//    1. Fetch RSS via proxy (bypasses 403 blocks)
+//    2. Filter recent headlines per category
+//    3. Send SHORT prompt to Groq (stays under 12k TPM)
+//    4. Retry on 429 with exponential backoff
+//    5. Push to Firestore REST API
 // ─────────────────────────────────────────────────────────────────
 
 import fetch from 'node-fetch';
@@ -31,668 +27,234 @@ const dateDisplay = targetDate.toLocaleDateString('en-IN', {
 });
 
 // ─────────────────────────────────────────────────────────────────
-//  RSS FEED REGISTRY
-//  Only feeds that are public, stable, and accessible from GitHub Actions
+//  RSS FEEDS — fetched via allorigins.win proxy to bypass 403
+//  allorigins is a free CORS proxy that works from GitHub Actions
 // ─────────────────────────────────────────────────────────────────
-const RSS_FEEDS = {
-  // PIB — Ministry-wise topic RSS feeds
-  pib_main:        { url: 'https://pib.gov.in/Rss.aspx',                                       label: 'PIB' },
-  pib_finance:     { url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=38',            label: 'PIB Finance' },
-  pib_defence:     { url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=16',            label: 'PIB Defence' },
-  pib_environment: { url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=34',            label: 'PIB Environment' },
-  pib_sports:      { url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=57',            label: 'PIB Sports' },
-  pib_culture:     { url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=29',            label: 'PIB Culture' },
-  pib_science:     { url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3',             label: 'PIB Science & Tech' },
-
+const RSS_FEEDS = [
+  // PIB topic-wise RSS (blocked directly → use proxy)
+  { key: 'pib_main',    url: 'https://pib.gov.in/Rss.aspx',                               label: 'PIB' },
+  { key: 'pib_fin',     url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=38',   label: 'PIB Finance' },
+  { key: 'pib_def',     url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=16',   label: 'PIB Defence' },
+  { key: 'pib_env',     url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=34',   label: 'PIB Environment' },
+  { key: 'pib_spo',     url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=57',   label: 'PIB Sports' },
+  { key: 'pib_cul',     url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=29',   label: 'PIB Culture' },
+  { key: 'pib_sci',     url: 'https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3',    label: 'PIB Science' },
   // RBI press releases
-  rbi:             { url: 'https://www.rbi.org.in/Scripts/rss.aspx',                            label: 'RBI' },
+  { key: 'rbi',         url: 'https://www.rbi.org.in/Scripts/rss.aspx',                   label: 'RBI' },
+  // MEA India
+  { key: 'mea',         url: 'https://www.mea.gov.in/rss/press-releases.xml',             label: 'MEA India' },
+  // ISRO
+  { key: 'isro',        url: 'https://www.isro.gov.in/rss.xml',                           label: 'ISRO' },
+  // UN News — these work directly (no 403)
+  { key: 'un_global',   url: 'https://news.un.org/feed/subscribe/en/news/all/rss.xml',    label: 'UN News', direct: true },
+  { key: 'un_asia',     url: 'https://news.un.org/feed/subscribe/en/news/region/asia-pacific/rss.xml', label: 'UN Asia', direct: true },
+];
 
-  // MEA India — official press releases
-  mea:             { url: 'https://www.mea.gov.in/rss/press-releases.xml',                      label: 'MEA India' },
-
-  // ISRO latest news
-  isro:            { url: 'https://www.isro.gov.in/rss.xml',                                    label: 'ISRO' },
-
-  // UN News — Asia Pacific region
-  un_asia:         { url: 'https://news.un.org/feed/subscribe/en/news/region/asia-pacific/rss.xml', label: 'UN News Asia' },
-  un_global:       { url: 'https://news.un.org/feed/subscribe/en/news/all/rss.xml',             label: 'UN News Global' },
+// Which feeds each category watches
+const CAT_FEEDS = {
+  'government-schemes':   ['pib_main', 'pib_fin'],
+  'economy-banking':      ['rbi', 'pib_fin'],
+  'defence':              ['pib_def', 'pib_main'],
+  'reports-indices':      ['pib_main', 'un_global'],
+  'environment':          ['pib_env', 'un_global'],
+  'awards-honours':       ['pib_main', 'pib_cul'],
+  'places-in-news':       ['pib_main', 'mea', 'un_global'],
+  'important-days':       ['un_global', 'un_asia', 'pib_main'],
+  'sports':               ['pib_spo', 'pib_main'],
+  'science-technology':   ['isro', 'pib_sci', 'pib_main'],
+  'summits-conferences':  ['mea', 'pib_main', 'un_global'],
+  'international':        ['mea', 'un_global', 'pib_main'],
+  'art-culture':          ['pib_cul', 'pib_main'],
+  'up-schemes':           ['pib_main'],
+  'up-infrastructure':    ['pib_main'],
+  'bihar-schemes':        ['pib_main'],
+  'bihar-infrastructure': ['pib_main'],
 };
 
 // ─────────────────────────────────────────────────────────────────
-//  CATEGORY DEFINITIONS
-//  17 categories matching your sources document exactly
+//  CATEGORY CONFIG — compact version (pick/skip + format per exam)
 // ─────────────────────────────────────────────────────────────────
 const CATEGORIES = [
-
-  // ─── 1. GOVERNMENT SCHEMES ───────────────────────────────────────
   {
-    id: 'government-schemes',
-    label: 'Government Schemes',
-    feedKeys: ['pib_main', 'pib_finance'],
-    sourceNames: ['PIB', 'MyGov India', 'India.gov.in', 'Ministry of Finance', 'NITI Aayog'],
-    pickRules: [
-      'New schemes launched by central government',
-      'Scheme modifications or expansions',
-      'Funding pattern and budget allocation',
-      'Constitutional or social relevance',
-      'Ministries involved',
-      'Implementation milestones',
-      'SDG linkage',
-      'Target beneficiaries',
-      'Technology used in scheme delivery',
-    ],
-    skipRules: [
-      'Long ministerial speeches',
-      'Political statements and party commentary',
-      'Inauguration ceremony details only',
-      'Minister quotes without factual substance',
-    ],
-    keyFactFields: ['Scheme Name', 'Nodal Ministry', 'Target Beneficiaries', 'Funding Pattern', 'Key Feature'],
-    examFormats: {
-      upsc_uppcs: 'Scheme Name | Ministry | Objective | Key Features | Funding Pattern | Beneficiaries | Significance (Economic/Social/Environmental) | Challenges | Way Forward | Related CA',
-      ssc_bank_upsssc: 'Scheme Name → Ministry → Launch Year → Beneficiary → Important Feature',
-    },
-    examDepth: {
-      UPSC:   'Deep analytical — Why important? Constitutional/social/economic relevance? Challenges? Way Forward? SDG linkage?',
-      UPPCS:  'Moderate analytical — State linkage, UP adaptation of central scheme, implementation issues in UP',
-      SSC:    'Factual one-liners — Who? What? When? Where? Ministry name, launch year, beneficiary',
-      BANK:   'Factual — Ministry, beneficiary, financial inclusion angle',
-      UPSSSC: 'Short factual — UP schemes, beneficiary groups, key feature only',
-      BPSC:   'Moderate — Bihar adaptation, beneficiary count, budget allocation',
-    },
-    states: ['all'],
+    id: 'government-schemes', label: 'Government Schemes', states: ['all'],
+    pick: 'New schemes, scheme modifications, funding pattern, ministries, beneficiaries, SDG linkage',
+    skip: 'Minister speeches, inauguration ceremonies, political statements',
+    upscFormat: 'Scheme Name | Ministry | Objective | Key Features | Funding Pattern | Beneficiaries | Significance | Challenges | Way Forward',
+    sscFormat:  'Scheme Name → Ministry → Launch Year → Beneficiary → Key Feature',
+    keyFields:  ['Scheme Name', 'Nodal Ministry', 'Target Beneficiaries', 'Funding Pattern'],
+    examTags:   ['upsc','uppcs','bpsc','ssc','upsssc'],
   },
-
-  // ─── 2. ECONOMY & BANKING ────────────────────────────────────────
   {
-    id: 'economy-banking',
-    label: 'Economy & Banking',
-    feedKeys: ['rbi', 'pib_finance', 'pib_main'],
-    sourceNames: ['RBI', 'SEBI', 'Economic Survey', 'Mint', 'Business Line', 'PIB Finance'],
-    pickRules: [
-      'Repo rate, reverse repo, CRR, SLR changes announced by RBI',
-      'Inflation data — CPI, WPI with actual figures',
-      'GDP growth figures (quarterly or annual)',
-      'Fiscal deficit numbers and targets',
-      'Budget announcements and allocations',
-      'RBI policy impacts and MPC decisions',
-      'Banking reforms and regulations',
-      'Unemployment data (PLFS)',
-      'Economic Survey key data points',
-      'SEBI regulations affecting investors',
-    ],
-    skipRules: [
-      'Stock market daily fluctuations and Sensex/Nifty movement',
-      'Corporate profit/loss results',
-      'IPO details and listings',
-      'Business gossip and minor company mergers',
-      'Individual company news without macro significance',
-    ],
-    keyFactFields: ['Rate / Indicator', 'Current Value', 'Previous Value', 'Released By', 'Significance'],
-    examFormats: {
-      upsc_uppcs: 'Topic | Meaning | Current Data | Causes | Impact (Economy / Society / Poor) | Government Measures | RBI Measures | Challenges | Way Forward',
-      ssc_bank_upsssc: 'Repo Rate/Term → Current Value → Change → RBI Governor → Significance',
-    },
-    examDepth: {
-      UPSC:   'Deep — fiscal policy, monetary policy transmission, economic survey linkage, global comparison',
-      UPPCS:  'Moderate — UP GSDP, state budget, UP economy linkage, MSME in UP',
-      SSC:    'Factual — repo rate, CRR, GDP number, RBI governor name',
-      BANK:   'Banking-focused — all RBI rates, banking abbreviations, financial terms, SEBI role',
-      UPSSSC: 'Basic banking awareness — repo rate, SLR, CRR definitions and current values',
-      BPSC:   'Moderate — Bihar GSDP, fiscal deficit, Bihar budget, banking in Bihar',
-    },
-    states: ['all'],
+    id: 'economy-banking', label: 'Economy & Banking', states: ['all'],
+    pick: 'Repo rate, CRR, SLR, inflation (CPI/WPI), GDP, fiscal deficit, budget, banking reforms, RBI MPC decisions',
+    skip: 'Stock market daily movement, IPO news, corporate profits, company mergers',
+    upscFormat: 'Topic | Meaning | Current Data | Causes | Impact (Economy/Society/Poor) | RBI Measures | Challenges | Way Forward',
+    sscFormat:  'Rate/Term → Current Value → Change → Significance',
+    keyFields:  ['Rate / Indicator', 'Current Value', 'Previous Value', 'Released By'],
+    examTags:   ['upsc','uppcs','bpsc','ssc','bank','upsssc'],
   },
-
-  // ─── 3. DEFENCE ──────────────────────────────────────────────────
   {
-    id: 'defence',
-    label: 'Defence',
-    feedKeys: ['pib_defence', 'pib_main'],
-    sourceNames: ['Ministry of Defence', 'DRDO', 'Indian Army', 'Indian Navy', 'Indian Air Force', 'PIB Defence'],
-    pickRules: [
-      'Military exercises — name, participating countries, venue, objective',
-      'Missile systems — name, range, developed by, type',
-      'Defence indigenisation milestones and Make in India',
-      'Defence Corridor updates (UP Aligarh-Lucknow, Tamil Nadu)',
-      'Maritime security — naval exercises, Coast Guard',
-      'Defence deals and acquisitions',
-      'Appointments of Army/Navy/Air Force chiefs',
-      'Strategic importance of operations or deployments',
-    ],
-    skipRules: [
-      'Ceremonial military visits and parades',
-      'Long speeches by Defence Minister',
-      'Technical engineering and weapons design specifications',
-      'Routine training camp news',
-    ],
-    keyFactFields: ['Exercise / System Name', 'Countries Involved', 'Venue', 'Developed By / Ministry', 'Strategic Significance'],
-    examFormats: {
-      upsc_uppcs: 'Exercise/System Name | Participating Countries | Venue | Strategic Importance | Defence Indigenisation angle | Maritime/border security context',
-      ssc_bank_upsssc: 'Exercise Name → Countries Involved → Venue → Purpose',
-    },
-    examDepth: {
-      UPSC:   'Strategic depth — indigenisation policy, strategic doctrines, maritime security, border policy implications',
-      UPPCS:  'Moderate — UP Defence Corridor (Aligarh to Lucknow), defence manufacturing in UP, DRDO labs in UP',
-      SSC:    'Factual — missile names, exercise names, countries involved, chiefs names',
-      BANK:   'Basic — major exercises, defence budget headline',
-      UPSSSC: 'Basic factual — UP defence corridor name, major missile names',
-      BPSC:   'Factual — exercises with Nepal/Bangladesh, Bihar military heritage',
-    },
-    states: ['all'],
+    id: 'defence', label: 'Defence', states: ['all'],
+    pick: 'Military exercises (name, countries, venue), missile systems, defence indigenisation, defence corridor, maritime security, appointments of chiefs',
+    skip: 'Ceremonial visits, technical weapon specs, routine training',
+    upscFormat: 'Exercise/System | Countries | Venue | Strategic Importance | Indigenisation angle',
+    sscFormat:  'Exercise Name → Countries → Venue → Purpose',
+    keyFields:  ['Exercise / System Name', 'Countries Involved', 'Venue', 'Significance'],
+    examTags:   ['upsc','uppcs','ssc','upsssc','bpsc'],
   },
-
-  // ─── 4. REPORTS & INDICES ────────────────────────────────────────
   {
-    id: 'reports-indices',
-    label: 'Reports & Indices',
-    feedKeys: ['pib_main', 'un_global'],
-    sourceNames: ['World Bank', 'UNDP', 'IMF', 'WEF', 'NITI Aayog Reports', 'PIB'],
-    pickRules: [
-      "Report name and publishing organization",
-      "India's rank — current and previous year comparison",
-      'Top country/state in the index',
-      'Theme of the report (especially annual theme)',
-      "India's score or composite value",
-      'State-wise rankings within India',
-    ],
-    skipRules: [
-      'Full report PDF content and methodology sections',
-      'Statistical methodology explanations',
-      'Technical annexures and country-by-country detailed tables',
-    ],
-    keyFactFields: ['Report Name', 'Released By', "India's Rank", 'Top Country / State', 'Theme'],
-    examFormats: {
-      upsc_uppcs: "Report Name | Released By | India's Rank | Top Country | Theme | Why India's rank changed | Policy implications | State-wise data",
-      ssc_bank_upsssc: "Report Name → Released By → India's Rank → Top Country → Theme",
-    },
-    examDepth: {
-      UPSC:   "Deep — India's rank trend over years, policy implications, government response, global comparison",
-      UPPCS:  "Moderate — UP's rank in state-wise sub-indices, implications for UP governance",
-      SSC:    "Factual — report name, who released it, India rank, top country",
-      BANK:   "Factual — economic and financial inclusion indices",
-      UPSSSC: "Basic factual — report name, India rank only",
-      BPSC:   "Moderate — Bihar's rank, national comparison, NITI Aayog state ranking",
-    },
-    states: ['all'],
+    id: 'reports-indices', label: 'Reports & Indices', states: ['all'],
+    pick: "Report name, publishing org, India's rank (current + previous), top country, theme, state-wise rankings",
+    skip: 'Full report methodology, statistical annexures, country-by-country tables',
+    upscFormat: "Report | Released By | India's Rank | Top Country | Theme | Why rank changed | Policy implications",
+    sscFormat:  "Report → Released By → India's Rank → Top Country → Theme",
+    keyFields:  ['Report Name', 'Released By', "India's Rank", 'Top Country / State'],
+    examTags:   ['upsc','uppcs','bpsc','ssc','upsssc'],
   },
-
-  // ─── 5. ENVIRONMENT & BIODIVERSITY ───────────────────────────────
   {
-    id: 'environment',
-    label: 'Environment & Biodiversity',
-    feedKeys: ['pib_environment', 'pib_main', 'un_global'],
-    sourceNames: ['MoEFCC', 'UNEP', 'WWF India', 'IPCC', 'Forest Survey of India', 'PIB Environment'],
-    pickRules: [
-      'New Ramsar sites designated in India (name, state, area)',
-      'Tiger reserve status updates and Project Tiger',
-      'National park notifications and wildlife corridors',
-      'COP meeting outcomes and India commitments',
-      'Climate change data — temperature rise, emissions targets',
-      'Biodiversity conventions — CBD, CITES, Ramsar',
-      'Endangered species in news with IUCN status',
-      'Forest cover India State of Forest Report data',
-      'Pollution control — air, water, plastic ban',
-      'Green hydrogen, renewable energy milestones',
-    ],
-    skipRules: [
-      'Full climate science research papers',
-      'Technical scientific jargon without exam relevance',
-      'Routine environmental monitoring data',
-      'Individual factory pollution cases',
-    ],
-    keyFactFields: ['Site / Species Name', 'Location / State', 'Category (Ramsar / Tiger Reserve / NP)', 'Governing Body', 'Significance'],
-    examFormats: {
-      upsc_uppcs: 'Topic | International Convention linkage | India commitment | Site/Species details | Climate relevance | Challenges | Way Forward',
-      ssc_bank_upsssc: 'National Park/Reserve → State → Nearby River → Species found → Why in news',
-    },
-    examDepth: {
-      UPSC:   'Deep — international conventions (CITES, CBD, Ramsar, UNFCCC), India commitments, climate policy, biodiversity Act',
-      UPPCS:  'Moderate — UP wildlife sanctuaries (Dudhwa, Pilibhit), Ganga rejuvenation, UP forest cover',
-      SSC:    'Factual — national parks, states, rivers nearby, species found',
-      BANK:   'Basic — major environmental events, green finance, ESG',
-      UPSSSC: 'Factual — UP national parks, common species names, UP environment schemes',
-      BPSC:   'Moderate — Bihar wetlands, Valmiki Tiger Reserve, Gangetic dolphin (state animal), Bihar forest data',
-    },
-    states: ['all'],
+    id: 'environment', label: 'Environment & Biodiversity', states: ['all'],
+    pick: 'New Ramsar sites, tiger reserves, national parks, COP outcomes, endangered species (IUCN status), forest cover data, climate targets',
+    skip: 'Full climate science papers, technical jargon, routine monitoring data',
+    upscFormat: 'Topic | Convention linkage | India commitment | Site/Species details | Challenges | Way Forward',
+    sscFormat:  'NP/Reserve → State → Nearby River → Species → Why in news',
+    keyFields:  ['Site / Species Name', 'Location / State', 'Category', 'Governing Body'],
+    examTags:   ['upsc','uppcs','bpsc','ssc','upsssc'],
   },
-
-  // ─── 6. AWARDS & HONOURS ─────────────────────────────────────────
   {
-    id: 'awards-honours',
-    label: 'Awards & Honours',
-    feedKeys: ['pib_main', 'pib_culture'],
-    sourceNames: ['Padma Awards Portal', 'President of India', 'Nobel Prize', 'MHA', 'Ministry of Youth Affairs and Sports', 'PIB'],
-    pickRules: [
-      'Padma awards — Padma Vibhushan, Padma Bhushan, Padma Shri',
-      'Bharat Ratna announcements',
-      'Nobel Prize winners (all six categories)',
-      'Sports awards — Arjuna, Dronacharya, Khel Ratna, Dhyan Chand',
-      'Important national appointments (Governors, CBI, RAW, CEC)',
-      'International awards received by Indians',
-      'Sahitya Akademi and Sangeet Natak Akademi awards',
-    ],
-    skipRules: [
-      'Full biography details of recipient',
-      'Acceptance speech content',
-      'Celebrity award shows and film awards',
-      'Local or district-level minor awards',
-    ],
-    keyFactFields: ['Award Name', 'Recipient', 'Field / Category', 'Awarded By', 'Year'],
-    examFormats: {
-      upsc_uppcs: 'Award Name | Recipient | Field | Awarded By | Year | Historical significance | First recipient ever | Related context',
-      ssc_bank_upsssc: 'Award Name → Recipient → Field → Year',
-    },
-    examDepth: {
-      UPSC:   'Moderate — significance of award, first recipient historically, constitutional basis of Bharat Ratna',
-      UPPCS:  'Moderate — UP recipients of Padma awards, UP state awards',
-      SSC:    'Factual — award name, who got it, which field',
-      BANK:   'Factual — RBI governor awards, banking/finance sector appointments',
-      UPSSSC: 'Basic — Padma awards, sports awards, national appointments',
-      BPSC:   'Moderate — Bihar recipients of Padma/Nobel/national awards',
-    },
-    states: ['all'],
+    id: 'awards-honours', label: 'Awards & Honours', states: ['all'],
+    pick: 'Padma awards, Bharat Ratna, Nobel Prize, sports awards (Arjuna/Khel Ratna), national appointments, international awards to Indians',
+    skip: 'Full biographies, acceptance speeches, celebrity film awards, local awards',
+    upscFormat: 'Award | Recipient | Field | Awarded By | Year | Historical significance | First recipient',
+    sscFormat:  'Award → Recipient → Field → Year',
+    keyFields:  ['Award Name', 'Recipient', 'Field / Category', 'Awarded By'],
+    examTags:   ['upsc','uppcs','bpsc','ssc','upsssc'],
   },
-
-  // ─── 7. PLACES IN NEWS ───────────────────────────────────────────
   {
-    id: 'places-in-news',
-    label: 'Places in News',
-    feedKeys: ['pib_main', 'mea', 'un_global'],
-    sourceNames: ['Survey of India', 'The Hindu', 'Indian Express', 'Britannica', 'MEA India', 'PIB'],
-    pickRules: [
-      'Exact location — state, country, district, coordinates if relevant',
-      'Bordering states or countries',
-      'Nearby river, mountain range, or geographical feature',
-      'Specific reason why the place is in news',
-      'Geopolitical or strategic importance',
-      'Historical significance of the location',
-    ],
-    skipRules: [
-      'Travel content and tourism promotion articles',
-      'Real estate or property news',
-      'Local municipal and civic issues',
-    ],
-    keyFactFields: ['Place Name', 'State / Country', 'Bordering States / Countries', 'Nearby River / Mountain', 'Why in News'],
-    examFormats: {
-      upsc_uppcs: 'Place Name | State/Country | Bordering regions | Nearby river/mountain | Why in news | Geopolitical significance | Historical context',
-      ssc_bank_upsssc: 'Place → State/Country → Bordering → Why in news',
-    },
-    examDepth: {
-      UPSC:   'Moderate — geopolitical significance, historical context, strategic importance, India policy angle',
-      UPPCS:  'Moderate — UP districts in news, rivers of UP, UP-specific geography',
-      SSC:    'Factual — location, bordering states/countries',
-      BANK:   'Basic — major geopolitical places',
-      UPSSSC: 'Factual — UP geography, district facts, rivers in UP',
-      BPSC:   'Moderate — Bihar districts, bordering states/countries, Ganges and tributaries in Bihar',
-    },
-    states: ['all'],
+    id: 'places-in-news', label: 'Places in News', states: ['all'],
+    pick: 'Location (state/country), bordering regions, nearby river/mountain, why in news, geopolitical/strategic importance',
+    skip: 'Travel content, real estate news, local municipal issues',
+    upscFormat: 'Place | State/Country | Bordering regions | Nearby river/mountain | Why in news | Geopolitical significance',
+    sscFormat:  'Place → State/Country → Bordering → Why in news',
+    keyFields:  ['Place Name', 'State / Country', 'Bordering Region', 'Nearby River / Mountain'],
+    examTags:   ['upsc','uppcs','bpsc','ssc','upsssc'],
   },
-
-  // ─── 8. IMPORTANT DAYS & EVENTS ──────────────────────────────────
   {
-    id: 'important-days',
-    label: 'Important Days & Events',
-    feedKeys: ['un_global', 'un_asia', 'pib_main'],
-    sourceNames: ['United Nations', 'UNESCO', 'WHO', 'FAO', 'UNICEF', 'PIB'],
-    pickRules: [
-      'Date of observance (exact date)',
-      'Annual theme for the current year',
-      'Organising body (UN / UNESCO / WHO / FAO / national)',
-      'Year the day was first observed/declared',
-      'Significance for India specifically',
-    ],
-    skipRules: [
-      'Full historical background essays',
-      'Ceremonial celebration programme details',
-      'Local city-level event details',
-    ],
-    keyFactFields: ['Day / Event Name', 'Date', 'Theme (Current Year)', 'Organised By', 'First Observed'],
-    examFormats: {
-      upsc_uppcs: 'Day Name | Date | Theme (this year) | Organising Body | First Observed | Historical significance | India commitment/policy angle',
-      ssc_bank_upsssc: 'Day Name → Date → Theme → Organised By',
-    },
-    examDepth: {
-      UPSC:   'Moderate — historical background, India policy linkage, international convention basis',
-      UPPCS:  'Moderate — UP observances, state-level significance',
-      SSC:    'Factual — date, theme, organising body',
-      BANK:   'Factual — banking and finance related days (World Savings Day etc.)',
-      UPSSSC: 'Basic — national and international days, dates and themes only',
-      BPSC:   'Moderate — Bihar Foundation Day, Bihar special observances, national days',
-    },
-    states: ['all'],
+    id: 'important-days', label: 'Important Days & Events', states: ['all'],
+    pick: 'Date of observance, annual theme (exact wording), organising body, year first observed',
+    skip: 'Full historical essays, ceremonial programme details, local events',
+    upscFormat: 'Day Name | Date | Theme | Organising Body | First Observed | India policy angle',
+    sscFormat:  'Day → Date → Theme → Organised By',
+    keyFields:  ['Day / Event Name', 'Date', 'Theme (Current Year)', 'Organised By'],
+    examTags:   ['upsc','uppcs','bpsc','ssc','upsssc'],
   },
-
-  // ─── 9. SPORTS ───────────────────────────────────────────────────
   {
-    id: 'sports',
-    label: 'Sports',
-    feedKeys: ['pib_sports', 'pib_main'],
-    sourceNames: ['Olympics', 'ICC', 'BCCI', 'FIFA', 'Sports Authority of India', 'PIB Sports'],
-    pickRules: [
-      'Tournament winners and champions (name, country)',
-      'Host country/city of major tournaments',
-      'Venue details for major events',
-      'Mascots and themes of tournaments',
-      "India's ranking or medal tally",
-      'Khelo India programme events',
-      'Sports awards (Arjuna, Dronacharya, Khel Ratna)',
-    ],
-    skipRules: [
-      'Match scorecards and ball-by-ball analysis',
-      'Player transfer rumours and contracts',
-      'Daily tournament updates and match previews',
-      'Opinions and commentary columns',
-    ],
-    keyFactFields: ['Event Name', 'Winner / Champion', 'Host / Venue', "India's Position / Medals", 'Mascot (if any)'],
-    examFormats: {
-      upsc_uppcs: 'Event Name | Winner | Host/Venue | India Position | Khelo India / Sports policy linkage | Geopolitical angle if relevant',
-      ssc_bank_upsssc: 'Tournament → Winner → Host/Venue → India rank/medal → Mascot if any',
-    },
-    examDepth: {
-      UPSC:   'Basic — only major geopolitical sports events (Olympics, Commonwealth, Asian Games, World Cup)',
-      UPPCS:  'Moderate — Khelo India UP Games, UP sportspersons, UP sports infrastructure',
-      SSC:    'Factual — winners, hosts, venues, mascots, rankings',
-      BANK:   'Basic — major international sports headlines only',
-      UPSSSC: 'Factual — UP sports events, national games results, UP sportspersons',
-      BPSC:   'Moderate — Bihar sports events, national games Bihar contingent, Bihar sports infrastructure',
-    },
-    states: ['all'],
+    id: 'sports', label: 'Sports', states: ['all'],
+    pick: "Tournament winners, host country/city, venues, mascots, India's rank/medals, Khelo India events, sports awards",
+    skip: 'Match scorecards, player transfers, daily tournament updates, opinions',
+    upscFormat: 'Event | Winner | Host/Venue | India Position | Sports policy/Khelo India linkage',
+    sscFormat:  'Tournament → Winner → Host/Venue → India medals → Mascot',
+    keyFields:  ['Event Name', 'Winner / Champion', 'Host / Venue', "India's Position"],
+    examTags:   ['uppcs','bpsc','ssc','upsssc'],
   },
-
-  // ─── 10. SCIENCE & TECHNOLOGY ────────────────────────────────────
   {
-    id: 'science-technology',
-    label: 'Science & Technology',
-    feedKeys: ['isro', 'pib_science', 'pib_main'],
-    sourceNames: ['ISRO', 'DST', 'CSIR', 'NASA', 'Ministry of Electronics and IT', 'PIB Science & Tech'],
-    pickRules: [
-      'ISRO mission launches — name, vehicle, payload, orbit/destination',
-      'AI governance policies and frameworks',
-      'Quantum computing milestones',
-      'Biotechnology breakthroughs with policy relevance',
-      'Semiconductor Mission updates — PLI, fab units',
-      'Nobel Prize in Physics, Chemistry, Medicine',
-      'DST and CSIR research milestones with national impact',
-      'Space mission objectives and achievements',
-    ],
-    skipRules: [
-      'Programming and coding tutorials',
-      'Deep engineering and technical specifications',
-      'Startup gossip and venture capital news',
-      'Consumer technology product launches',
-    ],
-    keyFactFields: ['Mission / Technology', 'Developed By', 'Purpose / Objective', 'Launch Vehicle / Platform', 'Significance'],
-    examFormats: {
-      upsc_uppcs: 'Mission/Tech Name | Developed By | Purpose | Launch Vehicle | India global position | AI governance / Semiconductor policy angle | Significance',
-      ssc_bank_upsssc: 'Mission Name → ISRO/Agency → Launch Vehicle → Purpose → Orbit/Target',
-    },
-    examDepth: {
-      UPSC:   'Deep — AI governance, quantum policy, semiconductor mission, biotechnology ethics, India space policy',
-      UPPCS:  'Moderate — UP tech corridor, IT city Lucknow/Noida, Purvanchal innovation',
-      SSC:    'Factual — mission names, ISRO launches, Nobel science news',
-      BANK:   'Basic — fintech, digital banking, UPI milestones, RBI digital currency',
-      UPSSSC: 'Basic — ISRO mission names, common science facts, UP IT policy',
-      BPSC:   'Moderate — tech achievements relevant to Bihar, Digital Bihar initiative',
-    },
-    states: ['all'],
+    id: 'science-technology', label: 'Science & Technology', states: ['all'],
+    pick: 'ISRO missions (name/vehicle/payload), AI governance, quantum computing, semiconductor mission, Nobel in science, DST/CSIR breakthroughs',
+    skip: 'Programming tutorials, deep technical specs, startup gossip, consumer product launches',
+    upscFormat: 'Mission/Tech | Developed By | Purpose | Launch Vehicle | AI/semiconductor policy angle | India global position',
+    sscFormat:  'Mission → Agency → Launch Vehicle → Purpose → Orbit/Target',
+    keyFields:  ['Mission / Technology', 'Developed By', 'Purpose', 'Launch Vehicle / Platform'],
+    examTags:   ['upsc','uppcs','bpsc','ssc','upsssc'],
   },
-
-  // ─── 11. SUMMITS & CONFERENCES ───────────────────────────────────
   {
-    id: 'summits-conferences',
-    label: 'Summits & Conferences',
-    feedKeys: ['mea', 'pib_main', 'un_global'],
-    sourceNames: ['G20', 'United Nations', 'MEA India', 'BRICS', 'SCO', 'PIB'],
-    pickRules: [
-      'Summit name and host city/country',
-      'Theme of the summit (exact wording)',
-      'Key outcomes and joint declarations',
-      "India's role, commitments, and positions taken",
-      'Participating countries or member count',
-      'Major agreements or MoUs signed',
-    ],
-    skipRules: [
-      'Full declaration texts and communiqué language',
-      'Procedural and protocol details',
-      'Individual speech content',
-      'Side-event details without substantive outcomes',
-    ],
-    keyFactFields: ['Summit Name', 'Host / Venue', 'Theme', 'Key Participants', 'Key Outcome'],
-    examFormats: {
-      upsc_uppcs: 'Summit Name | Host/Venue | Theme | Participating Countries | Key Outcomes | India commitments | Strategic significance',
-      ssc_bank_upsssc: 'Summit → Host/Venue → Theme → Members/Countries',
-    },
-    examDepth: {
-      UPSC:   'Deep — theme, outcomes, India commitments, historical context, institutional background',
-      UPPCS:  'Moderate — India-hosted summits, UP investment summits (Global Investors Summit)',
-      SSC:    'Factual — venue, theme, participating countries',
-      BANK:   'Factual — G20, IMF, World Bank, ADB summits',
-      UPSSSC: 'Basic factual — summit name, venue, theme',
-      BPSC:   'Moderate — India-hosted summits, Bihar investment summits',
-    },
-    states: ['all'],
+    id: 'summits-conferences', label: 'Summits & Conferences', states: ['all'],
+    pick: 'Summit name, host city, theme (exact wording), key outcomes, India commitments, participating countries/members',
+    skip: 'Full declaration texts, procedural details, individual speeches',
+    upscFormat: 'Summit | Host/Venue | Theme | Countries | Key Outcomes | India commitments | Strategic significance',
+    sscFormat:  'Summit → Host/Venue → Theme → Member count',
+    keyFields:  ['Summit Name', 'Host / Venue', 'Theme', 'Key Outcome'],
+    examTags:   ['upsc','uppcs','bpsc','ssc','upsssc'],
   },
-
-  // ─── 12. INTERNATIONAL AFFAIRS ───────────────────────────────────
   {
-    id: 'international',
-    label: 'International Affairs',
-    feedKeys: ['mea', 'un_global', 'pib_main'],
-    sourceNames: ['MEA India', 'United Nations', 'World Bank', 'Council on Foreign Relations', 'PIB'],
-    pickRules: [
-      'Bilateral agreements and MoUs signed with India',
-      'Strategic partnerships and defence pacts',
-      'Border issues and diplomatic resolutions',
-      'International organization membership, HQ, and leadership',
-      'Treaties signed or ratified by India',
-      "Geopolitical conflicts affecting India's interests",
-      "India's UNSC positions and multilateral commitments",
-    ],
-    skipRules: [
-      'Daily political commentary and opinion pieces',
-      'Ideological debates without policy relevance',
-      "Individual country internal politics unless directly India-relevant",
-      'Celebrity diplomacy events',
-    ],
-    keyFactFields: ['Countries / Orgs Involved', 'Nature of Agreement / Event', 'Significance for India', 'Related Treaty / Body', 'Location'],
-    examFormats: {
-      upsc_uppcs: 'Countries/Orgs Involved | Nature of Event | Strategic significance for India | Related Treaty/Body | Historical context | Challenges',
-      ssc_bank_upsssc: 'Organization → HQ → Members → India role → Key report produced',
-    },
-    examDepth: {
-      UPSC:   'Deep analytical — bilateral relations, strategic groups, border policy, multilateral commitments, international law',
-      UPPCS:  'Moderate — India-UP trade and investment, UP in diplomatic map (GIS summit)',
-      SSC:    'Factual — HQ of organizations, member countries, key reports',
-      BANK:   'Factual — IMF, World Bank, ADB roles, India membership fees and voting share',
-      UPSSSC: 'Basic — major international orgs, India membership',
-      BPSC:   'Moderate — India-Bangladesh, India-Nepal relations, Bihar border implications',
-    },
-    states: ['all'],
+    id: 'international', label: 'International Affairs', states: ['all'],
+    pick: "Bilateral MoUs/agreements with India, strategic partnerships, international org (HQ/members), treaties signed, India's UNSC positions",
+    skip: 'Daily political commentary, ideological debates, internal politics of countries',
+    upscFormat: 'Countries/Orgs | Nature of Event | India significance | Related Treaty/Body | Historical context | Challenges',
+    sscFormat:  'Organization → HQ → Members → India role',
+    keyFields:  ['Countries / Orgs Involved', 'Nature of Event', 'India Significance', 'Related Treaty / Body'],
+    examTags:   ['upsc','uppcs','bpsc','ssc'],
   },
-
-  // ─── 13. ART & CULTURE ───────────────────────────────────────────
   {
-    id: 'art-culture',
-    label: 'Art & Culture',
-    feedKeys: ['pib_culture', 'pib_main'],
-    sourceNames: ['Ministry of Culture', 'CCRT', 'ASI', 'Sahitya Akademi', 'IGNCA', 'PIB Culture'],
-    pickRules: [
-      'UNESCO World Heritage or Intangible Heritage listings',
-      'GI tags (Geographical Indications) newly granted',
-      'Classical dance forms and classical music in news',
-      'Architecture and monuments added to UNESCO or ASI list',
-      'Important personalities — authors, artists, dancers in news',
-      'Sahitya Akademi and Sangeet Natak Akademi awards',
-      'Festivals receiving national or UNESCO recognition',
-      'Buddhism and Jainism heritage sites in news',
-    ],
-    skipRules: [
-      'Celebrity culture and Bollywood news',
-      'Entertainment industry box office updates',
-      'Local cultural events without national significance',
-    ],
-    keyFactFields: ['Art Form / Site / Festival', 'State / Region', 'UNESCO / GI Status', 'Associated Ministry / Body', 'Significance'],
-    examFormats: {
-      upsc_uppcs: 'Art Form/Site/Festival | State/Region | UNESCO Status | Associated Community | Historical period | Ministry linkage | Significance for exam',
-      ssc_bank_upsssc: 'Folk dance/Festival/Monument → State → Significance',
-    },
-    examDepth: {
-      UPSC:   'Deep — UNESCO process, historical context, Buddhism/Jainism heritage, architectural styles (Nagara, Dravidian, Vesara)',
-      UPPCS:  'Deep — UP art forms (Chikankari, Kathak, Thumri), UP UNESCO sites (Agra Fort, Fatehpur Sikri, Taj), UP melas (Kumbh)',
-      SSC:    'Factual — folk dances by state, festivals, monuments, states',
-      BANK:   'Basic — major cultural milestones, GI tags for banking-relevant products',
-      UPSSSC: 'Factual — UP melas, UP crafts (Chikankari, Zardozi, Muradabadi brassware), UP festivals',
-      BPSC:   'Deep — Bihar art (Madhubani painting, Tikuli), Chhath Puja UNESCO recognition, Nalanda, Bodh Gaya, Bihar heritage',
-    },
-    states: ['all'],
+    id: 'art-culture', label: 'Art & Culture', states: ['all'],
+    pick: 'UNESCO heritage listings, GI tags granted, classical dances/music, architecture/monuments, Sahitya/Sangeet Akademi awards, Buddhist/Jain heritage',
+    skip: 'Bollywood news, entertainment industry, local cultural events',
+    upscFormat: 'Art/Site/Festival | State/Region | UNESCO/GI Status | Historical period | Ministry linkage | Significance',
+    sscFormat:  'Folk dance/Festival/Monument → State → Significance',
+    keyFields:  ['Art Form / Site / Festival', 'State / Region', 'UNESCO / GI Status', 'Associated Body'],
+    examTags:   ['upsc','uppcs','bpsc','ssc','upsssc'],
   },
-
-  // ─── 14. UP GOVERNMENT SCHEMES ───────────────────────────────────
   {
-    id: 'up-schemes',
-    label: 'UP Govt. Schemes',
-    feedKeys: ['pib_main'],  // UP Govt has no public RSS; PIB covers major UP scheme PIB releases
-    sourceNames: ['UP Government (up.gov.in)', 'InfoUP', 'UP Budget (finance.up.nic.in)', 'UPDESCO', 'Invest UP'],
-    pickRules: [
-      'New schemes launched by UP state government',
-      'Budget allocation for UP welfare schemes',
-      'Beneficiary count and targets achieved',
-      'Nodal department and objectives',
-      'State-funded vs centrally sponsored distinction',
-      'UP-specific implementation milestones',
-    ],
-    skipRules: [
-      'Political speeches by CM or state ministers',
-      'Routine ceremony inaugurations without substance',
-      'Contract and tender information',
-    ],
-    keyFactFields: ['Scheme Name', 'Launched By / Year', 'Target Beneficiaries', 'Budget Allocation', 'Nodal Department'],
-    examFormats: {
-      upsc_uppcs: 'Scheme Name | Launched By/Year | Nodal Department | Target Beneficiaries | Budget Allocation | Objectives | Key Features | UP-specific significance',
-      ssc_bank_upsssc: 'Scheme Name → Department → Beneficiary → Key Feature',
-    },
-    examDepth: {
-      UPPCS:  'Deep — full scheme details, objectives, funding, UP budget linkage, implementation challenges',
-      UPSSSC: 'Moderate — scheme name, target group, year launched, key feature',
-      SSC:    'Basic — major UP scheme name and primary beneficiary',
-      BPSC:   'Not applicable',
-    },
-    states: ['uppcs'],
+    id: 'up-schemes', label: 'UP Govt. Schemes', states: ['uppcs'],
+    pick: 'UP government schemes, budget allocations, beneficiary counts, nodal department, UP-specific welfare',
+    skip: 'Political speeches, tenders, routine inaugurations',
+    upscFormat: 'Scheme | Launched By/Year | Department | Beneficiaries | Budget | Objectives | UP significance',
+    sscFormat:  'Scheme → Department → Beneficiary → Key Feature',
+    keyFields:  ['Scheme Name', 'Launched By / Year', 'Target Beneficiaries', 'Nodal Department'],
+    examTags:   ['uppcs','upsssc'],
   },
-
-  // ─── 15. UP INFRASTRUCTURE ───────────────────────────────────────
   {
-    id: 'up-infrastructure',
-    label: 'UP Infrastructure',
-    feedKeys: ['pib_main'],
-    sourceNames: ['UPEIDA (upeida.up.gov.in)', 'Invest UP', 'UP Metro (LMRCL)', 'NHAI', 'UP Power Corporation'],
-    pickRules: [
-      'Expressway projects — name, length, districts covered, cost',
-      'Airport development projects in UP',
-      'Metro rail projects — city, corridor length, stations',
-      'UP Defence Corridor (Aligarh to Lucknow) updates',
-      'Smart city projects in UP (Lucknow, Agra, Varanasi, Kanpur)',
-      'Industrial corridors and investment zones',
-      'Power projects and renewable energy in UP',
-    ],
-    skipRules: [
-      'Tender notices and contract award details',
-      'Technical construction specifications',
-      'Routine maintenance and repair news',
-    ],
-    keyFactFields: ['Project Name', 'Location / Districts', 'Length / Capacity', 'Completion Status', 'Strategic Significance'],
-    examFormats: {
-      upsc_uppcs: 'Project Name | Location/Districts | Length or Capacity | Investment | Completion Status | Strategic significance | Employment generation',
-      ssc_bank_upsssc: 'Project → Districts → Length/Capacity → Status',
-    },
-    examDepth: {
-      UPPCS:  'Deep — all expressways (Purvanchal, Bundelkhand, Ganga, Gorakhpur Link), airports, metro, defence corridor, smart cities, GIS investment',
-      UPSSSC: 'Moderate — UP expressways, connectivity projects, districts covered',
-      SSC:    'Basic — major UP infrastructure facts',
-      BPSC:   'Not applicable',
-    },
-    states: ['uppcs'],
+    id: 'up-infrastructure', label: 'UP Infrastructure', states: ['uppcs'],
+    pick: 'Expressways (name/length/districts), UP airports, metro rail projects, UP Defence Corridor, smart cities, industrial corridors',
+    skip: 'Tenders, technical specs, maintenance news',
+    upscFormat: 'Project | Districts | Length/Capacity | Investment | Status | Strategic significance',
+    sscFormat:  'Project → Districts → Length → Status',
+    keyFields:  ['Project Name', 'Location / Districts', 'Length / Capacity', 'Completion Status'],
+    examTags:   ['uppcs','upsssc'],
   },
-
-  // ─── 16. BIHAR GOVERNMENT SCHEMES ────────────────────────────────
   {
-    id: 'bihar-schemes',
-    label: 'Bihar Govt. Schemes',
-    feedKeys: ['pib_main'],
-    sourceNames: ['Government of Bihar (state.bihar.gov.in)', 'Bihar PRD', 'Bihar Finance Department', 'RTPS Bihar'],
-    pickRules: [
-      'New welfare schemes launched by Bihar state government',
-      'Budget announcements and allocations for Bihar',
-      'Beneficiary schemes — women, youth, farmers, SC/ST',
-      'Social sector scheme milestones',
-      'State-funded vs centrally sponsored distinction',
-    ],
-    skipRules: [
-      'Political commentary and party statements',
-      'Contract and tender information',
-      'Ceremonial inauguration-only news',
-    ],
-    keyFactFields: ['Scheme Name', 'Launched By / Year', 'Target Beneficiaries', 'Budget Allocation', 'Nodal Department'],
-    examFormats: {
-      upsc_uppcs: 'Scheme Name | Launched By/Year | Nodal Department | Target Beneficiaries | Budget Allocation | Objectives',
-      ssc_bank_upsssc: 'Scheme Name → Department → Beneficiary → Key Feature',
-    },
-    examDepth: {
-      BPSC:   'Deep — full scheme details, objectives, funding, Bihar budget linkage, welfare angle, implementation',
-      SSC:    'Basic — major Bihar scheme name and beneficiary',
-      UPPCS:  'Not applicable',
-    },
-    states: ['bpsc'],
+    id: 'bihar-schemes', label: 'Bihar Govt. Schemes', states: ['bpsc'],
+    pick: 'Bihar state welfare schemes, budget allocations, beneficiaries (women/youth/farmers), social sector milestones',
+    skip: 'Political commentary, tenders, inauguration-only news',
+    upscFormat: 'Scheme | Launched By/Year | Department | Beneficiaries | Budget | Objectives',
+    sscFormat:  'Scheme → Department → Beneficiary → Key Feature',
+    keyFields:  ['Scheme Name', 'Launched By / Year', 'Target Beneficiaries', 'Nodal Department'],
+    examTags:   ['bpsc'],
   },
-
-  // ─── 17. BIHAR INFRASTRUCTURE ────────────────────────────────────
   {
-    id: 'bihar-infrastructure',
-    label: 'Bihar Infrastructure',
-    feedKeys: ['pib_main'],
-    sourceNames: ['Bihar Urban Development Department', 'BSRDCL (bsrdcl.bihar.gov.in)', 'BIADA (biadabihar.in)', 'Bihar Government'],
-    pickRules: [
-      'Road and bridge projects (NH, state highways, Ganga bridges)',
-      'Industrial corridors in Bihar (BIADA zones)',
-      'Smart city projects (Patna, Gaya, Bhagalpur, Muzaffarpur)',
-      'Airport development (Patna, Darbhanga, Gaya)',
-      'Railway projects and new lines in Bihar',
-      'BSRDCL road construction milestones',
-    ],
-    skipRules: [
-      'Contract and tender information',
-      'Technical construction details and specifications',
-      'Routine maintenance and repair updates',
-    ],
-    keyFactFields: ['Project Name', 'Location / Districts', 'Investment / Capacity', 'Completion Status', 'Significance'],
-    examFormats: {
-      upsc_uppcs: 'Project Name | Location/Districts | Investment | Completion Status | Significance for Bihar economy',
-      ssc_bank_upsssc: 'Project → Location → Status',
-    },
-    examDepth: {
-      BPSC:   'Deep — roads, bridges, Ganga bridges, industrial corridors, smart city projects, airport investment',
-      SSC:    'Basic — major Bihar infrastructure facts',
-      UPPCS:  'Not applicable',
-    },
-    states: ['bpsc'],
+    id: 'bihar-infrastructure', label: 'Bihar Infrastructure', states: ['bpsc'],
+    pick: 'Roads/bridges (NH, Ganga bridges), BIADA industrial zones, smart cities (Patna/Gaya/Bhagalpur), airports, BSRDCL milestones',
+    skip: 'Contract/tender details, technical specs, routine maintenance',
+    upscFormat: 'Project | Districts | Investment | Status | Bihar economy significance',
+    sscFormat:  'Project → Location → Status',
+    keyFields:  ['Project Name', 'Location / Districts', 'Investment', 'Completion Status'],
+    examTags:   ['bpsc'],
   },
-
 ];
 
 // ─────────────────────────────────────────────────────────────────
-//  RSS FETCH & PARSE
+//  RSS FETCH via allorigins.win proxy (bypasses PIB/MEA 403 block)
 // ─────────────────────────────────────────────────────────────────
-async function fetchFeed(feedKey) {
-  const { url, label } = RSS_FEEDS[feedKey];
+async function fetchFeed({ key, url, label, direct }) {
+  const fetchUrl = direct
+    ? url
+    : `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+
   try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Current4Exams-CA-Bot/2.0 (Educational portal; admin: examhall1987@gmail.com)' },
-      signal: AbortSignal.timeout(14000),
+    const res = await fetch(fetchUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Current4ExamsBot/3.0)' },
+      signal: AbortSignal.timeout(20000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const xml = await res.text();
-    const items = parseRSS(xml, label, feedKey);
+
+    let xml;
+    if (direct) {
+      xml = await res.text();
+    } else {
+      const json = await res.json();
+      xml = json.contents || '';
+      if (!xml) throw new Error('Empty proxy response');
+    }
+
+    const items = parseRSS(xml, label, key);
     console.log(`  ✅ ${label}: ${items.length} items`);
     return items;
   } catch(e) {
@@ -708,9 +270,9 @@ function parseRSS(xml, label, feedKey) {
   while ((m = re.exec(xml)) !== null) {
     const block = m[1];
     const title = clean(get(block, 'title'));
-    const desc  = clean(get(block, 'description')).slice(0, 350);
+    const desc  = clean(get(block, 'description')).slice(0, 200);
     const date  = get(block, 'pubDate') || get(block, 'dc:date') || '';
-    if (title) items.push({ title, desc, date, source: label, feedKey });
+    if (title && title.length > 5) items.push({ title, desc, date, source: label, feedKey });
   }
   return items;
 }
@@ -721,123 +283,109 @@ function get(xml, tag) {
   return m ? m[1].trim() : '';
 }
 
-function clean(str) {
-  return str
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ').trim();
+function clean(s) {
+  return s.replace(/<[^>]+>/g,'').replace(/&amp;/g,'&').replace(/&lt;/g,'<')
+    .replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'")
+    .replace(/&nbsp;/g,' ').replace(/\s+/g,' ').trim();
 }
 
-function isRecent(dateStr) {
-  if (!dateStr) return true;
+function isRecent(d) {
+  if (!d) return true;
+  try { return Date.now() - new Date(d).getTime() < 48*3600*1000; }
+  catch { return true; }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  GROQ CALL with exponential backoff retry on 429
+// ─────────────────────────────────────────────────────────────────
+async function callGroq(prompt, attempt = 0) {
   try {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    return diff < 48 * 3600 * 1000; // 48 hours
-  } catch { return true; }
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        temperature: 0.3,
+        max_tokens: 2000,          // reduced from 3500 → stays under TPM limit
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (res.status === 429) {
+      // Parse "try again in Xs" from error message
+      const errText = await res.text();
+      const waitMatch = errText.match(/try again in ([\d.]+)s/i);
+      const waitSecs = waitMatch ? Math.ceil(parseFloat(waitMatch[1])) + 2 : (10 * (attempt + 1));
+      console.log(`  ⏳ Groq rate limit — waiting ${waitSecs}s (attempt ${attempt+1})`);
+      await sleep(waitSecs * 1000);
+      if (attempt < 4) return callGroq(prompt, attempt + 1);
+      throw new Error('Groq rate limit after 4 retries');
+    }
+
+    if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+    const d = await res.json();
+    return d.choices[0].message.content.trim();
+  } catch(e) {
+    if (e.message.includes('rate limit') && attempt < 4) {
+      await sleep(15000 * (attempt + 1));
+      return callGroq(prompt, attempt + 1);
+    }
+    throw e;
+  }
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  GROQ CALL
-// ─────────────────────────────────────────────────────────────────
-async function callGroq(prompt) {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      temperature: 0.3,
-      max_tokens: 3500,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
-  const d = await res.json();
-  return d.choices[0].message.content.trim();
-}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ─────────────────────────────────────────────────────────────────
-//  ARTICLE GENERATION
+//  GENERATE — SHORT PROMPT to stay under 12k TPM
 // ─────────────────────────────────────────────────────────────────
 async function generateForCategory(cat, allHeadlines) {
-  // Pull headlines from this category's feeds
+  const feeds = CAT_FEEDS[cat.id] || ['pib_main'];
   const headlines = allHeadlines
-    .filter(h => cat.feedKeys.includes(h.feedKey) && isRecent(h.date))
-    .slice(0, 15);
+    .filter(h => feeds.includes(h.feedKey) && isRecent(h.date))
+    .slice(0, 8);  // max 8 headlines per category to keep prompt short
 
-  const headlinesBlock = headlines.length
-    ? headlines.map((h, i) => `${i+1}. [${h.source}] ${h.title}\n   ${h.desc}`).join('\n\n')
-    : `No live headlines available. Generate the 2 most important and recent ${cat.label} topics from your knowledge as of ${dateDisplay}.`;
+  const hlText = headlines.length
+    ? headlines.map((h,i) => `${i+1}. [${h.source}] ${h.title}`).join('\n')
+    : `No live feed. Use knowledge for most important recent ${cat.label} topic as of ${dateStr}.`;
 
-  const pickBlock  = cat.pickRules.map(r => `  ✅ ${r}`).join('\n');
-  const skipBlock  = cat.skipRules.map(r => `  ❌ ${r}`).join('\n');
-  const depthBlock = Object.entries(cat.examDepth)
-    .filter(([,v]) => v !== 'Not applicable')
-    .map(([exam, depth]) => `  • ${exam}: ${depth}`)
-    .join('\n');
+  // SHORT focused prompt — key to staying under TPM
+  const prompt = `You write current affairs for Indian competitive exams (UPSC/UPPCS/BPSC/SSC/UPSSSC).
+Date: ${dateDisplay} | Category: ${cat.label}
 
-  const prompt = `You are a senior current affairs expert writing for Indian competitive exam students (UPSC, UPPCS, BPSC, SSC CGL, UPSSSC).
+HEADLINES:
+${hlText}
 
-TODAY: ${dateDisplay}
-CATEGORY: ${cat.label}
-AUTHORITATIVE SOURCES FOR THIS CATEGORY: ${cat.sourceNames.join(', ')}
+PICK: ${cat.pick}
+SKIP: ${cat.skip}
 
-━━━ LIVE HEADLINES FETCHED FROM OFFICIAL SOURCES ━━━
-${headlinesBlock}
-
-━━━ WHAT TO PICK (exam-relevant for ${cat.label}) ━━━
-${pickBlock}
-
-━━━ WHAT TO SKIP (not exam-relevant) ━━━
-${skipBlock}
-
-━━━ EXAM-WISE DEPTH REQUIRED ━━━
-${depthBlock}
-
-━━━ ARTICLE FORMATS ━━━
-For UPSC/UPPCS articles:   ${cat.examFormats.upsc_uppcs}
-For SSC/Bank/UPSSSC:       ${cat.examFormats.ssc_bank_upsssc}
-
-━━━ FILTER TEST (apply before writing) ━━━
-• UPSC/UPPCS: Is this topic important? What is the impact? What are the challenges? Constitutional/social/economic relevance?
-• SSC/Bank: Can examiner ask Who? What? When? Where? from this? If NO → skip.
-
-━━━ YOUR TASK ━━━
-Select the 2 MOST EXAM-RELEVANT topics from the headlines above (or from knowledge if no headlines).
-Write a complete article for each. Return a JSON array with exactly 2 objects.
-
-Each object must have ALL these fields:
+Select 2 most exam-relevant topics. For each return JSON:
 {
-  "title": "Specific headline — include actual name, number, or date. Bad: 'Government launches new scheme'. Good: 'PM Modi launches PM Surya Ghar Yojana — 1 Crore rooftop solar homes targeted'",
-  "summary": "2-3 sentences. Must include specific numbers, names, places. No vague language like 'significant development'.",
-  "body": "Full HTML. Use <p><h3><ul><li><strong> tags. Minimum 250 words. Sections: What Happened → Background → Key Details with numbers → Exam Significance → Challenges (UPSC) / Quick Recall Facts (SSC).",
+  "title": "specific headline with real name/number",
+  "summary": "2-3 sentences with specific facts, numbers, names",
+  "body": "<p>HTML article 200+ words. Sections: What Happened → Background → Key Facts → Exam Angle</p>",
   "category": "${cat.id}",
   "states": ${JSON.stringify(cat.states)},
-  "source": "Name of primary source (from headlines or '${cat.sourceNames[0]}')",
-  "importance": "high if this topic appeared in 2+ major exam papers in last 3 years OR is a very major recent development; medium for moderately important; low otherwise",
-  "relevance": "Prelims + Mains OR Prelims only OR Tier 1 + Tier 2",
-  "examNote": "Specific actionable tip. Name the exam + paper + section. Example: 'UPPCS Mains GS Paper 2 (Governance). SSC CGL Tier 1 GA — expect: What is the ministry? When was it launched? Who are the beneficiaries?'",
-  "examTags": ["upsc","uppcs","bpsc","ssc","upsssc"] — only include exams this topic is genuinely relevant for,
+  "source": "source name",
+  "importance": "high|medium|low",
+  "relevance": "Prelims + Mains|Prelims only|Tier 1 + Tier 2",
+  "examNote": "specific exam+paper+section tip",
+  "examTags": ${JSON.stringify(cat.examTags)},
   "keyFacts": [
-    {"key": "${cat.keyFactFields[0]}", "value": "SPECIFIC — a real name, number, or date. Not 'Various' or 'As applicable'"},
-    {"key": "${cat.keyFactFields[1]}", "value": "SPECIFIC value"},
-    {"key": "${cat.keyFactFields[2]}", "value": "SPECIFIC value"},
-    {"key": "${cat.keyFactFields[3] || 'Related Body'}", "value": "SPECIFIC value"}
+    {"key":"${cat.keyFields[0]}","value":"specific value"},
+    {"key":"${cat.keyFields[1]}","value":"specific value"},
+    {"key":"${cat.keyFields[2]}","value":"specific value"},
+    {"key":"${cat.keyFields[3] || 'Significance'}","value":"specific value"}
   ],
-  "sscOneLiner": "Arrow-format for SSC/UPSSSC students. Example: 'PM Surya Ghar Yojana → Ministry of New & Renewable Energy → launched Feb 2024 → 1 crore homes → subsidy up to ₹78,000'",
-  "upscAngle": "2 sentences for UPSC/UPPCS. Analytical: constitutional basis, policy challenge, or global comparison. Example: 'The scheme aligns with India's NDC commitment of 500 GW renewable energy by 2030 under the Paris Agreement. However, land acquisition delays and grid integration challenges remain key implementation bottlenecks.'"
+  "sscOneLiner": "${cat.sscFormat.replace(/\|/g,'→')} — fill with real values",
+  "upscAngle": "2-sentence analytical angle for UPSC/UPPCS"
 }
 
-STRICT RULES:
-1. keyFacts values = SPECIFIC (real number, real name, real date). Never vague.
-2. title = SPECIFIC (include the actual scheme/mission/exercise name).
-3. examNote = SPECIFIC exam + paper + section + type of question expected.
-4. sscOneLiner = arrow format only.
-5. Do NOT guess or hallucinate statistics. Omit uncertain numbers rather than fabricate.
-6. Do NOT write about political speeches, inaugurations only, stock market, or anything in the SKIP list.
-7. body must be proper HTML, readable, at least 250 words.
+UPSC/UPPCS format: ${cat.upscFormat}
+SSC/UPSSSC format: ${cat.sscFormat}
 
-Return ONLY the JSON array. No preamble. No markdown fences. No explanation.`;
+Rules: keyFacts = specific (real names/numbers, not vague). No hallucinated stats.
+Return ONLY a JSON array of 2 objects. No markdown, no explanation.`;
 
   let raw = await callGroq(prompt);
   raw = raw.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'').trim();
@@ -846,13 +394,9 @@ Return ONLY the JSON array. No preamble. No markdown fences. No explanation.`;
   try {
     return JSON.parse(raw);
   } catch(e) {
-    // Try extracting array from partial response
-    const arrMatch = raw.match(/\[[\s\S]*\]/);
-    if (arrMatch) {
-      try { return JSON.parse(arrMatch[0]); } catch {}
-    }
-    console.error(`  ⚠️  JSON parse failed for ${cat.label}: ${e.message}`);
-    console.error('  First 500 chars:', raw.slice(0, 500));
+    const arr = raw.match(/\[[\s\S]*\]/);
+    if (arr) { try { return JSON.parse(arr[0]); } catch {} }
+    console.error(`  ⚠️  JSON parse failed: ${e.message} | Raw: ${raw.slice(0,200)}`);
     return [];
   }
 }
@@ -861,14 +405,14 @@ Return ONLY the JSON array. No preamble. No markdown fences. No explanation.`;
 //  FIRESTORE PUSH
 // ─────────────────────────────────────────────────────────────────
 function toFSVal(v) {
-  if (v === null || v === undefined) return { nullValue: null };
+  if (v == null) return { nullValue: null };
   if (typeof v === 'string')  return { stringValue: v };
   if (typeof v === 'boolean') return { booleanValue: v };
   if (typeof v === 'number' && Number.isInteger(v)) return { integerValue: String(v) };
-  if (typeof v === 'number') return { doubleValue: v };
-  if (v instanceof Date) return { timestampValue: v.toISOString() };
-  if (Array.isArray(v)) return { arrayValue: { values: v.map(toFSVal) } };
-  if (typeof v === 'object') return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k,x]) => [k, toFSVal(x)])) } };
+  if (typeof v === 'number')  return { doubleValue: v };
+  if (v instanceof Date)      return { timestampValue: v.toISOString() };
+  if (Array.isArray(v))       return { arrayValue: { values: v.map(toFSVal) } };
+  if (typeof v === 'object')  return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k,x]) => [k, toFSVal(x)])) } };
   return { stringValue: String(v) };
 }
 
@@ -880,7 +424,12 @@ async function pushToFirestore(article) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
   });
-  if (!res.ok) throw new Error(`Firestore ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const err = await res.text();
+    // Friendly message for 403
+    if (res.status === 403) throw new Error(`Firestore 403 — update Firestore Rules (see README)`);
+    throw new Error(`Firestore ${res.status}: ${err}`);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -890,65 +439,64 @@ async function main() {
   if (!GROQ_API_KEY)     { console.error('❌ Missing GROQ_API_KEY');     process.exit(1); }
   if (!FIREBASE_API_KEY) { console.error('❌ Missing FIREBASE_API_KEY'); process.exit(1); }
 
-  const categoryFilter = process.env.CATEGORIES_OVERRIDE
+  const catFilter = process.env.CATEGORIES_OVERRIDE
     ? process.env.CATEGORIES_OVERRIDE.split(',').map(s => s.trim())
     : null;
+  const categories = catFilter ? CATEGORIES.filter(c => catFilter.includes(c.id)) : CATEGORIES;
 
-  const categories = categoryFilter
-    ? CATEGORIES.filter(c => categoryFilter.includes(c.id))
-    : CATEGORIES;
-
-  console.log('\n' + '═'.repeat(65));
-  console.log('  Current4Exams — Daily CA Generator v2.0');
+  console.log('\n' + '═'.repeat(60));
+  console.log('  Current4Exams — Daily CA Generator v3.0');
   console.log(`  Date: ${dateDisplay}`);
   console.log(`  Categories: ${categories.length}`);
-  console.log('═'.repeat(65));
+  console.log('═'.repeat(60));
 
-  // ── Fetch all RSS feeds in parallel ───────────────────────────
-  console.log('\n🌐 Fetching RSS feeds...');
-  const allFeedKeys = [...new Set(categories.flatMap(c => c.feedKeys))];
-  const feedResultsArr = await Promise.allSettled(allFeedKeys.map(fetchFeed));
+  // ── Fetch all feeds in parallel ────────────────────────────────
+  console.log('\n🌐 Fetching RSS feeds via proxy...');
+  const feedResults = await Promise.allSettled(RSS_FEEDS.map(fetchFeed));
+  const allHeadlines = feedResults.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+  console.log(`\n📊 Total headlines: ${allHeadlines.length}\n`);
 
-  const allHeadlines = feedResultsArr.flatMap(r =>
-    r.status === 'fulfilled' ? r.value : []
-  );
-  console.log(`\n📊 Total headlines: ${allHeadlines.length} from ${allFeedKeys.length} feeds\n`);
-
-  // ── Generate + push per category ──────────────────────────────
-  let published = 0;
-  let failed    = 0;
+  // ── Generate + push per category (with 6s gap between each) ───
+  let published = 0, failed = 0;
 
   for (const cat of categories) {
     console.log(`\n⏳ ${cat.label}`);
     try {
       const articles = await generateForCategory(cat, allHeadlines);
-      for (const article of articles) {
-        if (!article.title || !article.summary) { console.log('  ⚠️  Skipped: missing title/summary'); continue; }
-        article.publishedAt   = new Date(targetDate);
-        article.createdAt     = new Date();
-        article.autoGenerated = true;
-        article.generatedDate = dateStr;
+      for (const a of articles) {
+        if (!a.title || !a.summary) { console.log('  ⚠️  Skipped: missing fields'); continue; }
+        a.publishedAt   = new Date(targetDate);
+        a.createdAt     = new Date();
+        a.autoGenerated = true;
+        a.generatedDate = dateStr;
         try {
-          await pushToFirestore(article);
-          console.log(`  ✅ ${article.title.slice(0, 70)}`);
+          await pushToFirestore(a);
+          console.log(`  ✅ ${a.title.slice(0, 72)}`);
           published++;
         } catch(e) {
           console.error(`  ❌ Push: ${e.message}`);
           failed++;
+          // If Firestore is the problem, no point continuing pushes for this category
+          if (e.message.includes('403')) break;
         }
       }
     } catch(e) {
-      console.error(`  ❌ Generation: ${e.message}`);
+      console.error(`  ❌ ${e.message}`);
       failed++;
     }
-    await new Promise(r => setTimeout(r, 2000)); // Groq rate limit pause
+
+    // 6s gap between categories → avoids Groq TPM overflow
+    await sleep(6000);
   }
 
-  console.log('\n' + '═'.repeat(65));
+  console.log('\n' + '═'.repeat(60));
   console.log(`  ✨ Published: ${published}  |  Failed: ${failed}`);
-  console.log('═'.repeat(65) + '\n');
+  console.log('═'.repeat(60) + '\n');
 
-  if (published === 0) { console.error('No articles published.'); process.exit(1); }
+  if (published === 0) {
+    console.error('No articles published — check Firestore Rules (see fix below)');
+    process.exit(1);
+  }
 }
 
 main().catch(e => { console.error('Fatal:', e); process.exit(1); });
