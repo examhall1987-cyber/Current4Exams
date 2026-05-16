@@ -1,0 +1,12 @@
+{
+  "name": "current4exams-scripts",
+  "version": "1.0.0",
+  "description": "Current Affairs generation scripts for Current4Exams",
+  "type": "module",
+  "scripts": {
+    "generate": "node scripts/generate-ca.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  }
+}
