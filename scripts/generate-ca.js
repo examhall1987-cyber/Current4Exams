@@ -341,51 +341,60 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // ─────────────────────────────────────────────────────────────────
 async function generateForCategory(cat, allHeadlines) {
   const feeds = CAT_FEEDS[cat.id] || ['pib_main'];
+
+  // Scan ALL recent headlines for this category — no arbitrary 2-article cap
   const headlines = allHeadlines
     .filter(h => feeds.includes(h.feedKey) && isRecent(h.date))
-    .slice(0, 8);  // max 8 headlines per category to keep prompt short
+    .slice(0, 12); // cap at 12 to control prompt token size
+
+  // Target: cover ALL relevant headlines, minimum 3 articles always
+  const targetCount = headlines.length >= 8 ? 6
+                    : headlines.length >= 5 ? 4
+                    : 3;
 
   const hlText = headlines.length
     ? headlines.map((h,i) => `${i+1}. [${h.source}] ${h.title}`).join('\n')
-    : `No live feed. Use knowledge for most important recent ${cat.label} topic as of ${dateStr}.`;
+    : `No live feed. Generate the ${targetCount} most important recent ${cat.label} topics as of ${dateStr} from your knowledge.`;
 
-  // SHORT focused prompt — key to staying under TPM
   const prompt = `You write current affairs for Indian competitive exams (UPSC/UPPCS/BPSC/SSC/UPSSSC).
 Date: ${dateDisplay} | Category: ${cat.label}
 
-HEADLINES:
+HEADLINES (scan ALL — cover every important one, do not stop at 2):
 ${hlText}
 
 PICK: ${cat.pick}
 SKIP: ${cat.skip}
 
-Select 2 most exam-relevant topics. For each return JSON:
+Write ${targetCount} articles — one for each headline that passes the PICK filter.
+Never limit to just 2 articles. All exam-relevant headlines must be covered.
+
+For each return JSON:
 {
-  "title": "specific headline with real name/number",
+  "title": "specific headline with real name/number — not vague",
   "summary": "2-3 sentences with specific facts, numbers, names",
-  "body": "<p>HTML article 200+ words. Sections: What Happened → Background → Key Facts → Exam Angle</p>",
+  "body": "<p>HTML 200+ words: What Happened → Background → Key Facts → Exam Angle</p>",
   "category": "${cat.id}",
   "states": ${JSON.stringify(cat.states)},
   "source": "source name",
   "importance": "high|medium|low",
   "relevance": "Prelims + Mains|Prelims only|Tier 1 + Tier 2",
-  "examNote": "specific exam+paper+section tip",
+  "examNote": "specific exam + paper + section + expected question type",
   "examTags": ${JSON.stringify(cat.examTags)},
   "keyFacts": [
-    {"key":"${cat.keyFields[0]}","value":"specific value"},
-    {"key":"${cat.keyFields[1]}","value":"specific value"},
-    {"key":"${cat.keyFields[2]}","value":"specific value"},
-    {"key":"${cat.keyFields[3] || 'Significance'}","value":"specific value"}
+    {"key":"${cat.keyFields[0]}","value":"specific real value"},
+    {"key":"${cat.keyFields[1]}","value":"specific real value"},
+    {"key":"${cat.keyFields[2]}","value":"specific real value"},
+    {"key":"${cat.keyFields[3] || 'Significance'}","value":"specific real value"}
   ],
-  "sscOneLiner": "${cat.sscFormat.replace(/\|/g,'→')} — fill with real values",
-  "upscAngle": "2-sentence analytical angle for UPSC/UPPCS"
+  "sscOneLiner": "arrow-format: Name → Ministry/Body → Year → Key fact",
+  "upscAngle": "2-sentence analytical angle: policy implication or challenge"
 }
 
 UPSC/UPPCS format: ${cat.upscFormat}
 SSC/UPSSSC format: ${cat.sscFormat}
 
-Rules: keyFacts = specific (real names/numbers, not vague). No hallucinated stats.
-Return ONLY a JSON array of 2 objects. No markdown, no explanation.`;
+Rules: keyFacts values must be specific (real names/numbers/dates). No hallucinated stats.
+Return ONLY a JSON array of ${targetCount} objects. No markdown. No explanation.`;
 
   let raw = await callGroq(prompt);
   raw = raw.replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/```\s*$/i,'').trim();
