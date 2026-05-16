@@ -1,0 +1,40 @@
+name: Daily Current Affairs Generator
+
+on:
+  schedule:
+    # Runs every day at 6:30 AM IST (1:00 AM UTC)
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+    inputs:
+      date_override:
+        description: 'Date to generate for (YYYY-MM-DD), leave blank for today'
+        required: false
+        default: ''
+      categories:
+        description: 'Comma-separated categories (leave blank for all)'
+        required: false
+        default: ''
+
+jobs:
+  generate-ca:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install node-fetch@3
+
+      - name: Generate & push current affairs
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          DATE_OVERRIDE: ${{ github.event.inputs.date_override }}
+          CATEGORIES_OVERRIDE: ${{ github.event.inputs.categories }}
+        run: node scripts/generate-ca.js
