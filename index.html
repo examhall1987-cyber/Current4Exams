@@ -315,12 +315,16 @@ async function fetchArticles() {
 // ── Count badges per category ──
 function updateCounts() {
   const cats = [
-    'current-affairs','government-schemes','economy-banking','defence',
+    'government-schemes','economy-banking','defence',
     'reports-indices','environment','awards-honours','places-in-news',
     'important-days','sports','science-technology','summits-conferences',
     'international','art-culture','up-schemes','up-infrastructure',
     'bihar-schemes','bihar-infrastructure'
   ];
+  // "Current Affairs" shows total count of ALL articles
+  const caEl = document.getElementById('cnt-current-affairs');
+  if (caEl) caEl.textContent = allArticles.length || '0';
+
   cats.forEach(cat => {
     const el = document.getElementById('cnt-' + cat);
     if (el) el.textContent = allArticles.filter(a => a.category === cat).length || '0';
@@ -377,7 +381,10 @@ function timeStr(ts) {
 
 // ── Render articles ──
 function renderArticles() {
-  let filtered = allArticles.filter(a => a.category === activeCategory);
+  // 'current-affairs' is the "All" view — shows every article regardless of category
+  let filtered = activeCategory === 'current-affairs'
+    ? [...allArticles]
+    : allArticles.filter(a => a.category === activeCategory);
 
   if (activeStateFilter !== 'all')
     filtered = filtered.filter(a => !a.states || a.states.includes('all') || a.states.includes(activeStateFilter));
